@@ -75,21 +75,73 @@ plot_single_factor = function(dataset,
   }
 }
 
-plot_floor_heat = function(f_str_m){
-  f_value_m = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[BOOTH_CODE == m]$saleperarea)}) 
+#Plot heat plot for each floor with heat value sale etc. And the label may be series or category
+#most variable is caculated when testing
+plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "saleperareainterval",filter_col = "BOOTH_CODE"){
+  if(filter_col == "BOOTH_CODE"){
+    f_value_m = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[BOOTH_CODE == m,][[value_name]])})
+  } 
+  else if(filter_col == "contract_code"){
+    f_value_m = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[contract_code == m,][[value_name]])})
+  }
   f_value_m[is.na(!(f_value_m > 0))] = 0
   f_value_m = as.data.frame(f_value_m)
   f_value_m[] = sapply(f_value_m,unlist)
   f_value_m$rownum = 1:nrow(f_value_m)
   f_value_m$rownum = -f_value_m$rownum
   f_value_m_melt = melt(f_value_m,id.vars = "rownum")
-  f_value_m_melt <- ddply(f_value_m_melt, .(variable,rownum), transform,rescale = rescale(value))
-  p <- ggplot(f_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = (log(value))),colour = "white") + scale_fill_gradient(low = "white",high = "purple")
+  #name each grid in the matrix
+  f_cat_list = list()
+  f_cat_str = matrix(list(character(0)),nrow = nrow(f_str_m),ncol = ncol(f_str_m))
+  for(name in label_name){
+    f_cat_list[[name]] = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[BOOTH_CODE == m,][[name]])})
+    # f_cat_temp = convert_list_matrix_to_character_matrix(f_cat_list[[name]])
+    f_cat_str[] = paste_matrix2(f_cat_str,f_cat_list[[name]])
+    }
+  f_cat_m = f_cat_list[[1]]
+  f_cat_m[] = f_cat_str
+  f_cat_length_m = apply(f_cat_m,c(1,2),function(m){str_length(str_trim(m[[1]]))})
+  f_cat_m[is.na(f_cat_length_m>0)] = ""
+  f_cat_m = as.data.frame(f_cat_m)
+  f_cat_m[] = sapply(f_cat_m,unlist)
+  f_cat_m$rownum = -(1:nrow(f_cat_m))
+  f_cat_m_melt = melt(f_cat_m,id.vars = "rownum")
+  p <- ggplot(f_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = value),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f_cat_m_melt$value))
   p
 }
 
 #plot in different chart
+convert_list_matrix_to_character_matrix = function(m){
+  m2 = matrix(character(0),nrow = nrow(m),ncol = ncol(m))
+  m2[] = sapply(m,function(x){ifelse(length(x)==1,x,NA)})
+  return(m2)
+}
+
+#m1,m2 need to be a matrix,since matrix is a list, we need to unlist it.
+paste_matrix = function(m1,m2){
+  result = m1
+  for(i in 1:nrow(m1)){
+    for(j in 1:nrow(m2)){
+      result[i,j] = paste(unlist(m1[i,j]),unlist(m2[i,j]),sep = "\n")
+    }
+  }
+  return(result)
+}
+
+#m1,m2 need to be a matrix,since matrix is a list, we need to unlist it.
+paste_matrix2_base = function(e1,e2){
+  result = paste(unlist(e1),unlist(e2),sep = "\n")
+}
+
+paste_matrix2 = Vectorize(paste_matrix2_base)
+
+paste_omit_na = function(x,y){
+  result = ifelse((is.na(x)|is.na(y)),NA,paste0(x,y))
+  return(result)
+}
 
 test_function = function(){
-  print("this is a test function")
+  l = list(character(0))
+  result = paste0(unlist(l),"\n",unlist(l))
+  print(result)
 }

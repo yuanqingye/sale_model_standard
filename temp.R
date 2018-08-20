@@ -49,7 +49,7 @@ sale_data = merge(sale_data_raw,contract,by.x = "contract_code",by.y = "CONTRACT
 View(sale_data[((str_trim(cont_cat1_name) == ""|is.na(cont_cat1_name)) & (str_trim(CATEGORY_NAME_1) == ""|is.na(CATEGORY_NAME_1))),])
 sale_data = sale_data[str_trim(CATEGORY_NAME_1) == ""|is.na(CATEGORY_NAME_1),c("CATEGORY_NAME_1","CATEGORY_NAME_2","CATEGORY_NAME_3") := list(cont_cat1_name,cont_cat2_name,cont_cat3_name)]
 sale_data = sale_data[str_trim(cont_cat1_name) == ""|is.na(cont_cat1_name),c("cont_cat1_name","cont_cat2_name","cont_cat3_name") := list(CATEGORY_NAME_1,CATEGORY_NAME_2,CATEGORY_NAME_3)]
-sale_data_picked = sale_data[,c("date_id","ordr_date","month_id","prod_name","mall_name","shop_id","shop_name","house_no","act_amt","BRAND_NAME","SERIES_NAME","BOOTH_CODE","BOOTH_GRADE","BOOTH_NAME","cont_cat1_name","cont_cat2_name","cont_cat3_name","CATEGORY_NAME_1",
+sale_data_picked = sale_data[,c("date_id","ordr_date","month_id","prod_name","mall_name","shop_id","shop_name","house_no","act_amt","contract_code","BRAND_NAME","SERIES_NAME","BOOTH_CODE","BOOTH_GRADE","BOOTH_NAME","cont_cat1_name","cont_cat2_name","cont_cat3_name","CATEGORY_NAME_1",
                                 "CATEGORY_NAME_2","CATEGORY_NAME_3","FLOOR_NAME","RENTABLE_AREA","ACTUAL_AREA","ZX_PRICE","MONTH_AMOUNT")]
 sale_data_picked = sale_data_picked[,avg_amt := act_amt/ACTUAL_AREA,]
 sale_data_picked_after_2016 = sale_data_picked[str_sub(month_id,1,4)%in%c(2016,2017,2018),]
@@ -121,16 +121,19 @@ ggplot(data = sale_data_floor_sum,aes(FLOOR_NAME))+geom_bar(aes(weight = sale,fi
 
 #品类年份，季节，工作日/周末单位面积销量分布
 #工作日/周末单位面积
+Sys.setlocale(category = "LC_ALL", locale = "English_United States.1252")
 sale_data_picked[,dayofweek := weekdays(as.Date(date_id,'%Y-%m-%d'))]
 sale_data_picked[,ifweekend := ifelse(dayofweek %in% c("Saturday","Sunday"),"weekend","weekday")]
 # sale_data_picked[,mirrorsaleperarea := ifelse(dayofweek %in% c("Saturday","Sunday"),saleperarea,-saleperarea)]
 sale_data_cat2_week_saleperarea_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),record_num = .N),by = c("cont_cat2_name","ifweekend")]
+
 sale_data_cat2_week_saleperarea_sum[,saleperarea_mirror := ifelse(ifweekend == "weekend",saleperarea,-saleperarea)]
 p <- ggplot(sale_data_cat2_week_saleperarea_sum, aes(x=cont_cat2_name, y=saleperarea_mirror, fill=ifweekend)) + geom_bar(stat="identity", position="identity")
 p + theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 sale_data_cat2_week_saleperarea_sum_dcast = dcast(sale_data_cat2_week_saleperarea_sum,cont_cat2_name~ifweekend,value.var = "saleperarea")
 sale_data_cat2_week_saleperarea_sum_dcast[,weekend_index := weekend/weekday]
+Sys.setlocale(category = "LC_ALL", locale = "")
 
 #季节性变动
 sale_data_picked[,season := quarters(as.Date(date_id,'%Y-%m-%d'))]
@@ -150,7 +153,7 @@ sale_data_cat2_onsale_saleperarea_sum_dcast[,onsale_index := `TRUE`/`FALSE`]
 
 #店铺逐一分析
 # sale_data_month_booth_sum = sale_data_raw[,.(sale = sum(trade_amt),order_num = .N),by = c("month_id","cont_cat3_name","booth_id","booth_desc","house_no","shop_name")]
-sale_data_month_booth_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),order_num = .N),by = c("month_id","CATEGORY_NAME_3","FLOOR_NAME","BOOTH_CODE","BOOTH_NAME","house_no","shop_name","shop_id","BRAND_NAME","SERIES_NAME")]
+sale_data_month_booth_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),order_num = .N),by = c("month_id","CATEGORY_NAME_3","FLOOR_NAME","BOOTH_CODE","BOOTH_NAME","house_no","shop_name","shop_id","BRAND_NAME","SERIES_NAME","contract_code")]
 sale_data_month_booth_sum_recent = sale_data_month_booth_sum[month_id>='2017-04',]
 
 #一楼楼层平面结构
@@ -178,7 +181,31 @@ m10 = c("A0480030",rep(NA,14))
 m11 = c("A0480030","A0480031","A0480020","A0480010",NA,"A0480590","A0480590",rep(NA,2),"A0481710","A0481700","A0481690","A0481680",rep(NA,2))
 f4_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11)
 f4_str_m = as.matrix(f4_str_m)
+#plot with value:saleperarea and label:series
 plot_floor_heat(f4_str_m)
+#plot with value:saleperarea and label:category_name_3
+plot_floor_heat(f4_str_m,label_name = "category_name_3",value_name = "saleperareainterval")
+
+#二楼楼层平面结构
+m1 = c(NA,NA,NA,0471,0386,0470,0513,0622,NA,0533,0511,0379,0621,NA,NA,0539,0459,0602,0602,0493,0493)
+m2 = m1
+m3 = NA
+m4 = c(0227,NA,0559,0389,NA,NA,NA,0502,0460,0405,0536,0551,0228,0503,0475,0370,0504,rep(NA,4))
+m5 = c(0515,NA,0559,0389,NA,NA,NA,0401,0401,0578,0578,0464,0464,0464,0464,0464,0464,rep(NA,4))
+m6 = c(NA,NA,NA,NA,NA,0338,0355,0353,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA)
+m7 = c(0469,NA,0442,0356,NA,0338,0355,0353,NA,0548,0548,0548,0546,0546,0546,0547,0547,0547,0547,NA,NA)
+m8 = c(0415,NA,0354,0354,NA,0338,0355,0353,NA,0548,0548,0548,0546,0546,0546,0547,0547,0547,0547,NA,NA)
+m9 = c(rep(NA,19),0509,0509)
+m10 = c(0229,NA,0231,0361,0361,NA,NA,NA,0508,0508,0538,0234,0234,NA,0500,NA,NA,NA,NA,0509,0509)
+m11 = c(0402,NA,0458,0593,0362,NA,NA,NA,0630,0630,0532,0680,0680,0500,0500,NA,NA,NA,NA,NA,NA)
+m12 = c(0599,rep(NA,20))
+m13 = c(0403,NA,0506,0465,NA,0523,0549,NA,NA,0400,0400,0518,0416,0241,0241,NA,NA,NA,0477,0211,NA)
+m14 = c(0352,NA,0506,0465,NA,0523,0549,NA,NA,0400,0400,0518,0416,0241,0241,NA,NA,NA,0477,0211,NA)
+f2_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14)
+f2_str_m = as.matrix(f2_str_m)
+f2_str_m[] = as.character(f2_str_m)
+f2_str_m[] = paste_omit_na("0203010010",f2_str_m)
+plot_floor_heat(f2_str_m,label_name = "category_name_3",value_name = "saleperareainterval",filter_col = "contract_code")
 
 # `[.data.frame`(dict,dict$name == 'a',"value")
 # apply(m,c(1,2),sum)
@@ -188,23 +215,17 @@ Booth_code_name_dict2 = unique(Booth_code_name_dict2)
 Booth_code_name_dict3 = Booth_code_name_dict2[str_detect(Booth_code_name_dict2$BOOTH_CODE,"^A(\\w)*"),]
 #initially we split by BOOTH_CODE,BOOTH_NAME and then we filter by more
 sale_data_month_booth_sum2 = separate_rows(sale_data_month_booth_sum,BOOTH_CODE,sep = "/")
-sale_data_month_booth_sum3 = merge(sale_data_month_booth_sum2,Booth_code_name_dict3,by = "BOOTH_NAME",all.x = TRUE) 
-sale_data_booth_sum_recent = sale_data_month_booth_sum3[month_id>='2017-04',sum(saleperarea),by = c("BOOTH_CODE.y")]
-colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","saleperarea")
+sale_data_month_booth_sum3 = merge(sale_data_month_booth_sum2,Booth_code_name_dict3,by = "BOOTH_NAME",all.x = TRUE,allow.cartesian=TRUE) 
+#sale data booth sum with series name and category name in it
+sale_data_booth_sum_recent = sale_data_month_booth_sum3[month_id>='2017-04',.(saleperarea = sum(saleperarea),series_name = SERIES_NAME[sort(table(SERIES_NAME),decreasing = TRUE)[1]],category_name_3 = CATEGORY_NAME_3[sort(table(CATEGORY_NAME_3),decreasing = TRUE)[1]]),by = c("BOOTH_CODE.y","contract_code")]
+colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","contract_code","saleperarea","series_name","category_name_3")
 sale_data_booth_sum_recent[is.na(BOOTH_CODE),"saleperarea"] = 0
 saleperareaquantile = quantile(sale_data_booth_sum_recent$saleperarea,c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
 # saleperareainterval = cut(sale_data_booth_sum_recent$saleperarea,saleperareaquantile)
 sale_data_booth_sum_recent[,saleperareainterval := cut(saleperarea,saleperareaquantile)]
 
-f1_value_m = apply(f1_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[BOOTH_CODE == m]$saleperarea)}) 
-f1_value_m[is.na(!(f1_value_m > 0))] = 0
-f1_value_m = as.data.frame(f1_value_m)
-f1_value_m[] = sapply(f1_value_m,unlist)
-f1_value_m$rownum = 1:nrow(f1_value_m)
-f1_value_m$rownum = -f1_value_m$rownum
-f1_value_m_melt = melt(f1_value_m,id.vars = "rownum")
-f1_value_m_melt <- ddply(f1_value_m_melt, .(variable), .fun = transform,rescale = rescale(value))
-p <- ggplot(f1_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = (rescale)),colour = "white") + scale_fill_gradient(low = "white",high = "purple")
+# f1_value_m_melt <- ddply(f1_value_m_melt, .(variable), .fun = transform,rescale = rescale(value))
+p <- ggplot(f1_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = (value)),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f1_cat_m_melt$value))
 
 #plot specific shop trend in different category 
 #floor 1
