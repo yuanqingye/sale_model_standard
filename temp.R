@@ -1,9 +1,3 @@
-library(ggplot2)
-library(treemap)
-library(plotrix)
-library(tidyr)
-library(plyr)
-library(scales)
 source("~/Rfile/R_hive.R") ##!!need to include that file
 sale_data_sql = "select date_id,ordr_date,prod_name,mall_name,shop_id,shop_name,contract_code,house_no,booth_id,booth_desc,cnt_cat1_num,cnt_cat2_num,cnt_cat3_num,is_coupon,partner_name,cont_cat1_name,cont_cat2_name,cont_cat3_name,act_amt from dl.fct_ordr where mall_name like '%上海金桥商场%' and 
 ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0))"
@@ -52,10 +46,10 @@ sale_data = sale_data[str_trim(cont_cat1_name) == ""|is.na(cont_cat1_name),c("co
 sale_data_picked = sale_data[,c("date_id","ordr_date","month_id","prod_name","mall_name","shop_id","shop_name","house_no","act_amt","contract_code","BRAND_NAME","SERIES_NAME","BOOTH_CODE","BOOTH_GRADE","BOOTH_NAME","cont_cat1_name","cont_cat2_name","cont_cat3_name","CATEGORY_NAME_1",
                                 "CATEGORY_NAME_2","CATEGORY_NAME_3","FLOOR_NAME","RENTABLE_AREA","ACTUAL_AREA","ZX_PRICE","MONTH_AMOUNT")]
 sale_data_picked = sale_data_picked[,avg_amt := act_amt/ACTUAL_AREA,]
-sale_data_picked_after_2016 = sale_data_picked[str_sub(month_id,1,4)%in%c(2016,2017,2018),]
-sale_data_picked_after_2016[,onsale := any(between(date_id,on_sale_data$prom_begin_time,on_sale_data$date))]
-any(between(sale_data_picked_after_2016$date_id[1],on_sale_data$prom_begin_time,on_sale_data$date))
-sale_data_picked_after_2016$onsale = sapply(sale_data_picked_after_2016$date_id,function(dot_date,start_dates,end_dates){any(between(dot_date,start_dates,end_dates))},on_sale_data$prom_begin_time,on_sale_data$date)
+# sale_data_picked_after_2016 = sale_data_picked[str_sub(month_id,1,4)%in%c(2016,2017,2018),]
+# sale_data_picked_after_2016[,onsale := any(between(date_id,on_sale_data$prom_begin_time,on_sale_data$date))]
+# any(between(sale_data_picked_after_2016$date_id[1],on_sale_data$prom_begin_time,on_sale_data$date))
+# sale_data_picked_after_2016$onsale = sapply(sale_data_picked_after_2016$date_id,function(dot_date,start_dates,end_dates){any(between(dot_date,start_dates,end_dates))},on_sale_data$prom_begin_time,on_sale_data$date)
 
 
 sale_data_month_cat1 = sale_data_picked[,.(sale = sum(act_amt)),by = c("month_id","cont_cat1_name")]
@@ -155,6 +149,22 @@ sale_data_cat2_onsale_saleperarea_sum_dcast[,onsale_index := `TRUE`/`FALSE`]
 # sale_data_month_booth_sum = sale_data_raw[,.(sale = sum(trade_amt),order_num = .N),by = c("month_id","cont_cat3_name","booth_id","booth_desc","house_no","shop_name")]
 sale_data_month_booth_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),order_num = .N),by = c("month_id","CATEGORY_NAME_3","FLOOR_NAME","BOOTH_CODE","BOOTH_NAME","house_no","shop_name","shop_id","BRAND_NAME","SERIES_NAME","contract_code")]
 sale_data_month_booth_sum_recent = sale_data_month_booth_sum[month_id>='2017-04',]
+# `[.data.frame`(dict,dict$name == 'a',"value")
+# apply(m,c(1,2),sum)
+Booth_code_name_dict = sale_data_month_booth_sum[,c("BOOTH_CODE","BOOTH_NAME")]
+Booth_code_name_dict2 = separate_rows(Booth_code_name_dict,BOOTH_CODE,BOOTH_NAME,sep = "/")
+Booth_code_name_dict2 = unique(Booth_code_name_dict2)
+Booth_code_name_dict3 = Booth_code_name_dict2[str_detect(Booth_code_name_dict2$BOOTH_CODE,"^A(\\w)*"),]
+#initially we split by BOOTH_CODE,BOOTH_NAME and then we filter by more
+sale_data_month_booth_sum2 = separate_rows(sale_data_month_booth_sum,BOOTH_CODE,sep = "/")
+sale_data_month_booth_sum3 = merge(sale_data_month_booth_sum2,Booth_code_name_dict3,by = "BOOTH_NAME",all.x = TRUE,allow.cartesian=TRUE) 
+#sale data booth sum with series name and category name in it
+sale_data_booth_sum_recent = sale_data_month_booth_sum3[month_id>='2017-04',.(saleperarea = sum(saleperarea),series_name = SERIES_NAME[sort(table(SERIES_NAME),decreasing = TRUE)[1]],category_name_3 = CATEGORY_NAME_3[sort(table(CATEGORY_NAME_3),decreasing = TRUE)[1]]),by = c("BOOTH_CODE.y","contract_code")]
+colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","contract_code","saleperarea","series_name","category_name_3")
+sale_data_booth_sum_recent[is.na(BOOTH_CODE),"saleperarea"] = 0
+saleperareaquantile = quantile(sale_data_booth_sum_recent$saleperarea,c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
+# saleperareainterval = cut(sale_data_booth_sum_recent$saleperarea,saleperareaquantile)
+sale_data_booth_sum_recent[,saleperareainterval := cut(saleperarea,saleperareaquantile)]
 
 #一楼楼层平面结构
 m1 = c(NA,"A0180160",NA,"A0180170",NA,"A0181090",NA,"A0181080",NA,"A0171081",NA,"A0181060","A0181050","A0181030","A0181010")
@@ -166,6 +176,7 @@ m6 = c("A0180100",rep(NA,14))
 m7 = c("A0180070","A0180050","A0180030",NA,"A0180010",NA,"A0181690",NA,"A0181680","A0181670","A0181660","A0181650",NA,"A0181631","A0181630")
 f1_str_m = rbind(m1,NA,m2,NA,m3,NA,m4,m5,m6,NA,m7)
 f1_str_m = as.matrix(f1_str_m)
+plot_floor_heat(f1_str_m)
 
 #四楼楼层平面结构
 m1 = c(NA,NA,"A0480170","A0480180","A0480190",NA,"A0481120","A0481110","A0481100",NA,NA,"A0481090","A0481080","A0481071","A0481060")
@@ -205,24 +216,27 @@ f2_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14)
 f2_str_m = as.matrix(f2_str_m)
 f2_str_m[] = as.character(f2_str_m)
 f2_str_m[] = paste_omit_na("0203010010",f2_str_m)
-plot_floor_heat(f2_str_m,label_name = "category_name_3",value_name = "saleperareainterval",filter_col = "contract_code")
+plot_floor_heat(f2_str_m,label_name = c("series_name","category_name_3"),value_name = "saleperareainterval",filter_col = "contract_code")
 
-# `[.data.frame`(dict,dict$name == 'a',"value")
-# apply(m,c(1,2),sum)
-Booth_code_name_dict = sale_data_month_booth_sum[,c("BOOTH_CODE","BOOTH_NAME")]
-Booth_code_name_dict2 = separate_rows(Booth_code_name_dict,BOOTH_CODE,BOOTH_NAME,sep = "/")
-Booth_code_name_dict2 = unique(Booth_code_name_dict2)
-Booth_code_name_dict3 = Booth_code_name_dict2[str_detect(Booth_code_name_dict2$BOOTH_CODE,"^A(\\w)*"),]
-#initially we split by BOOTH_CODE,BOOTH_NAME and then we filter by more
-sale_data_month_booth_sum2 = separate_rows(sale_data_month_booth_sum,BOOTH_CODE,sep = "/")
-sale_data_month_booth_sum3 = merge(sale_data_month_booth_sum2,Booth_code_name_dict3,by = "BOOTH_NAME",all.x = TRUE,allow.cartesian=TRUE) 
-#sale data booth sum with series name and category name in it
-sale_data_booth_sum_recent = sale_data_month_booth_sum3[month_id>='2017-04',.(saleperarea = sum(saleperarea),series_name = SERIES_NAME[sort(table(SERIES_NAME),decreasing = TRUE)[1]],category_name_3 = CATEGORY_NAME_3[sort(table(CATEGORY_NAME_3),decreasing = TRUE)[1]]),by = c("BOOTH_CODE.y","contract_code")]
-colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","contract_code","saleperarea","series_name","category_name_3")
-sale_data_booth_sum_recent[is.na(BOOTH_CODE),"saleperarea"] = 0
-saleperareaquantile = quantile(sale_data_booth_sum_recent$saleperarea,c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
-# saleperareainterval = cut(sale_data_booth_sum_recent$saleperarea,saleperareaquantile)
-sale_data_booth_sum_recent[,saleperareainterval := cut(saleperarea,saleperareaquantile)]
+#F3展位情况
+m1 = c(NA,NA,0670,0670,NA,NA,NA,0393,0247,0487,0540,NA,NA,NA,0358,0452,0337,NA,NA,NA,NA,0480,0426,0479,0383)
+m2 = c(NA,NA,0670,0670,NA,0671,NA,0393,0247,0487,0540,NA,NA,NA,0358,0452,0337,NA,NA,NA,NA,0480,0426,0479,0383)
+m3 = c(rep(NA,24),0383)
+m4 = c(0368,0368,NA,0434,0434,0434,NA,NA,NA,NA,NA,NA,0662,0412,0512,0667,0380,0440,0363,0449,0449,NA,NA,NA,NA)
+m5 = c(0368,0368,NA,0434,0434,0434,NA,NA,NA,NA,NA,NA,0676,0676,0676,0676,0676,0510,0510,0510,0510,NA,NA,0529,0529)
+m6 = c(0368,0368,rep(NA,21),0529,0529)
+m7 = c(NA,NA,NA,0623,0623,0626,NA,NA,0655,0655,0655,NA,rep(0651,5),rep(0425,4),NA,NA,0529,0529)
+m8 = c(0411,0411,NA,0623,0625,0626,NA,NA,0652,0652,0652,NA,rep(0654,5),rep(0554,4),NA,NA,NA,NA)
+m9 = c(0411,0411,rep(NA,21),0544,0544)
+m10 = c(NA,NA,0396,0396,0620,0620,0620,rep(NA,5),0392,0399,0399,0391,0391,0555,0555,rep(0378,3),NA,0544,0544)
+m11 = c(0531,NA,0396,0396,0629,0629,0629,rep(NA,5),0392,0399,0399,0391,0391,0555,0555,rep(0378,3),NA,NA,NA)
+m12 = c(0531,rep(NA,22),0521,0521)
+m13 = c(0531,0530,0530,0530,NA,0567,0567,0567,NA,NA,0454,0454,0454,NA,NA,NA,0653,0658,0395,NA,NA,NA,0522,0522,NA)
+f3_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13)
+f3_str_m = as.matrix(f3_str_m)
+f3_str_m[] = as.character(f3_str_m)
+f3_str_m[] = paste_omit_na("0203010010",f3_str_m)
+plot_floor_heat(f3_str_m,label_name = c("series_name"),value_name = "saleperareainterval",filter_col = "contract_code")
 
 # f1_value_m_melt <- ddply(f1_value_m_melt, .(variable), .fun = transform,rescale = rescale(value))
 p <- ggplot(f1_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = (value)),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f1_cat_m_melt$value))

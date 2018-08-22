@@ -1,3 +1,10 @@
+library(ggplot2)
+library(treemap)
+library(plotrix)
+library(tidyr)
+library(plyr)
+library(scales)
+
 #contract related table
 #ods.ods_hana_bigbi_dim_contract_booth_detail_dt
 #hana BIGBI.dim_contract_detail
@@ -79,10 +86,10 @@ plot_single_factor = function(dataset,
 #most variable is caculated when testing
 plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "saleperareainterval",filter_col = "BOOTH_CODE"){
   if(filter_col == "BOOTH_CODE"){
-    f_value_m = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[BOOTH_CODE == m,][[value_name]])})
+    f_value_m = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[BOOTH_CODE == m,.SD[contract_code==max(contract_code),],by = "BOOTH_CODE"][[value_name]])})
   } 
   else if(filter_col == "contract_code"){
-    f_value_m = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[contract_code == m,][[value_name]])})
+    f_value_m = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[contract_code == m,.SD[1,],by = "contract_code"][[value_name]])})
   }
   f_value_m[is.na(!(f_value_m > 0))] = 0
   f_value_m = as.data.frame(f_value_m)
@@ -94,10 +101,19 @@ plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "sale
   f_cat_list = list()
   f_cat_str = matrix(list(character(0)),nrow = nrow(f_str_m),ncol = ncol(f_str_m))
   for(name in label_name){
-    f_cat_list[[name]] = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[BOOTH_CODE == m,][[name]])})
-    # f_cat_temp = convert_list_matrix_to_character_matrix(f_cat_list[[name]])
-    f_cat_str[] = paste_matrix2(f_cat_str,f_cat_list[[name]])
+    if (filter_col == "BOOTH_CODE") {
+      f_cat_list[[name]] = apply(f_str_m, c(1, 2), function(m) {
+        return(sale_data_booth_sum_recent[BOOTH_CODE == m,.SD[contract_code==max(contract_code),],by = "BOOTH_CODE"][[name]])
+      })
+      # f_cat_temp = convert_list_matrix_to_character_matrix(f_cat_list[[name]])
+      f_cat_str[] = paste_matrix2(f_cat_str, f_cat_list[[name]])
     }
+    if (filter_col == "contract_code") {
+      f_cat_list[[name]] = apply(f_str_m, c(1, 2), function(m) {return(sale_data_booth_sum_recent[contract_code == m,.SD[1,],by = "contract_code"][[name]])})
+      # f_cat_temp = convert_list_matrix_to_character_matrix(f_cat_list[[name]])
+      f_cat_str[] = paste_matrix2(f_cat_str, f_cat_list[[name]])
+    }
+  }
   f_cat_m = f_cat_list[[1]]
   f_cat_m[] = f_cat_str
   f_cat_length_m = apply(f_cat_m,c(1,2),function(m){str_length(str_trim(m[[1]]))})
