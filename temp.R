@@ -27,7 +27,9 @@ source('~/Rfile/R_hana.R', encoding = 'UTF-8')
 contract_data_sql = "select * from BIGBI.dim_contract_detail where mall_name like '%上海金桥商场%'"
 contract_raw = read_data_from_hana(contract_data_sql)
 contract_raw = data.table(contract_raw)
-contract = contract_raw[,c("CONTRACT_CODE","BRAND_NAME","SERIES_NAME","BOOTH_CODE","BOOTH_GRADE","BOOTH_NAME","CATEGORY_NAME_1","CATEGORY_NAME_2","CATEGORY_NAME_3","FLOOR_NAME","RENTABLE_AREA","ACTUAL_AREA","ZX_PRICE","MONTH_AMOUNT")]
+contract_duration = difftime(contract_raw$FINISH_DATE,contract_raw$BEGIN_DATE,units = "days")
+contract_raw$CONTRACT_DURATION = as.numeric(contract_duration)
+contract = contract_raw[,c("CONTRACT_CODE","BRAND_NAME","SERIES_NAME","BOOTH_CODE","BOOTH_GRADE","BOOTH_NAME","CATEGORY_NAME_1","CATEGORY_NAME_2","CATEGORY_NAME_3","FLOOR_NAME","RENTABLE_AREA","ACTUAL_AREA","ZX_PRICE","MONTH_AMOUNT","CONTRACT_DURATION","BEGIN_DATE","FINISH_DATE")]
 # limit_time_contract = contract_raw[BEGIN_DATE<="2018-01-01" & FINISH_DATE>="2018-01-01",]
 time_contract_201801 = contract_raw[BEGIN_DATE<="2018-01-01" & FINISH_DATE>="2018-01-31",]
 area_cat2_201801 = time_contract_201801[,.(area = sum(ACTUAL_AREA)),by = "CATEGORY_NAME_2"]
@@ -44,14 +46,12 @@ View(sale_data[((str_trim(cont_cat1_name) == ""|is.na(cont_cat1_name)) & (str_tr
 sale_data = sale_data[str_trim(CATEGORY_NAME_1) == ""|is.na(CATEGORY_NAME_1),c("CATEGORY_NAME_1","CATEGORY_NAME_2","CATEGORY_NAME_3") := list(cont_cat1_name,cont_cat2_name,cont_cat3_name)]
 sale_data = sale_data[str_trim(cont_cat1_name) == ""|is.na(cont_cat1_name),c("cont_cat1_name","cont_cat2_name","cont_cat3_name") := list(CATEGORY_NAME_1,CATEGORY_NAME_2,CATEGORY_NAME_3)]
 sale_data_picked = sale_data[,c("date_id","ordr_date","month_id","prod_name","mall_name","shop_id","shop_name","house_no","act_amt","contract_code","BRAND_NAME","SERIES_NAME","BOOTH_CODE","BOOTH_GRADE","BOOTH_NAME","cont_cat1_name","cont_cat2_name","cont_cat3_name","CATEGORY_NAME_1",
-                                "CATEGORY_NAME_2","CATEGORY_NAME_3","FLOOR_NAME","RENTABLE_AREA","ACTUAL_AREA","ZX_PRICE","MONTH_AMOUNT")]
+                                "CATEGORY_NAME_2","CATEGORY_NAME_3","FLOOR_NAME","RENTABLE_AREA","ACTUAL_AREA","ZX_PRICE","MONTH_AMOUNT","CONTRACT_DURATION","BEGIN_DATE","FINISH_DATE")]
 sale_data_picked = sale_data_picked[,avg_amt := act_amt/ACTUAL_AREA,]
-# sale_data_picked_after_2016 = sale_data_picked[str_sub(month_id,1,4)%in%c(2016,2017,2018),]
-# sale_data_picked_after_2016[,onsale := any(between(date_id,on_sale_data$prom_begin_time,on_sale_data$date))]
-# any(between(sale_data_picked_after_2016$date_id[1],on_sale_data$prom_begin_time,on_sale_data$date))
-# sale_data_picked_after_2016$onsale = sapply(sale_data_picked_after_2016$date_id,function(dot_date,start_dates,end_dates){any(between(dot_date,start_dates,end_dates))},on_sale_data$prom_begin_time,on_sale_data$date)
+sale_data_picked_after_2016 = sale_data_picked[str_sub(month_id,1,4)%in%c(2016,2017,2018),]
+sale_data_picked_after_2016$onsale = sapply(sale_data_picked_after_2016$date_id,function(dot_date,start_dates,end_dates){any(between(dot_date,start_dates,end_dates))},on_sale_data$prom_begin_time,on_sale_data$date)
 
-
+#品类分布
 sale_data_month_cat1 = sale_data_picked[,.(sale = sum(act_amt)),by = c("month_id","cont_cat1_name")]
 sale_data_wide_cat1 = dcast(sale_data_month_cat1,month_id~cont_cat1_name,value.var = "sale")
 
@@ -69,7 +69,7 @@ ggplot(data = sale_data_cat1_sum, mapping = aes(x = cont_cat1_name,y = sale)) + 
 ggplot(data = sale_data_cat2_sum, mapping = aes(x = cont_cat2_name,y = sale)) + geom_bar(stat = "identity",aes(fill = cont_cat2_name))
 ggplot(data = sale_data_cat3_sum, mapping = aes(x = cont_cat3_name,y = sale)) + geom_bar(stat = "identity",aes(fill = cont_cat3_name))
 
-#品类分布
+
 sale_data_cat2_saleperarea_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),record_num = .N),by = c("cont_cat2_name")]
 sale_data_cat2_saleperarea_sum_2017 = sale_data_picked[month_id>='2017-01'&month_id<='2017-12',.(saleperarea = sum(avg_amt),record_num = .N),by = c("cont_cat2_name")]
 sale_data_cat2_saleperarea_sum_2018 = sale_data_picked[month_id>='2018-01'&month_id<='2018-12',.(saleperarea = sum(avg_amt),record_num = .N),by = c("cont_cat2_name")]
@@ -145,26 +145,33 @@ sale_data_cat2_onsale_saleperarea_sum_dcast[,onsale_index := `TRUE`/`FALSE`]
 #店铺热力图
 
 
-#店铺逐一分析
+####店铺逐一分析
 # sale_data_month_booth_sum = sale_data_raw[,.(sale = sum(trade_amt),order_num = .N),by = c("month_id","cont_cat3_name","booth_id","booth_desc","house_no","shop_name")]
-sale_data_month_booth_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),order_num = .N),by = c("month_id","CATEGORY_NAME_3","FLOOR_NAME","BOOTH_CODE","BOOTH_NAME","house_no","shop_name","shop_id","BRAND_NAME","SERIES_NAME","contract_code")]
+sale_data_month_booth_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),order_num = .N),by = c("month_id","CATEGORY_NAME_3","FLOOR_NAME","BOOTH_CODE","BOOTH_NAME","house_no","shop_name","shop_id","BRAND_NAME","SERIES_NAME","contract_code","CONTRACT_DURATION","BEGIN_DATE","FINISH_DATE")]
 sale_data_month_booth_sum_recent = sale_data_month_booth_sum[month_id>='2017-04',]
 # `[.data.frame`(dict,dict$name == 'a',"value")
 # apply(m,c(1,2),sum)
 Booth_code_name_dict = sale_data_month_booth_sum[,c("BOOTH_CODE","BOOTH_NAME")]
 Booth_code_name_dict2 = separate_rows(Booth_code_name_dict,BOOTH_CODE,BOOTH_NAME,sep = "/")
 Booth_code_name_dict2 = unique(Booth_code_name_dict2)
-Booth_code_name_dict3 = Booth_code_name_dict2[str_detect(Booth_code_name_dict2$BOOTH_CODE,"^A(\\w)*"),]
+# Booth_code_name_dict3 = Booth_code_name_dict2[str_detect(Booth_code_name_dict2$BOOTH_CODE,"^A(\\w)*"),]
 #initially we split by BOOTH_CODE,BOOTH_NAME and then we filter by more
 sale_data_month_booth_sum2 = separate_rows(sale_data_month_booth_sum,BOOTH_CODE,sep = "/")
-sale_data_month_booth_sum3 = merge(sale_data_month_booth_sum2,Booth_code_name_dict3,by = "BOOTH_NAME",all.x = TRUE,allow.cartesian=TRUE) 
+sale_data_month_booth_sum3 = merge(sale_data_month_booth_sum2,Booth_code_name_dict2,by = "BOOTH_NAME",all.x = TRUE,allow.cartesian=TRUE) 
 #sale data booth sum with series name and category name in it
-sale_data_booth_sum_recent = sale_data_month_booth_sum3[month_id>='2017-04',.(saleperarea = sum(saleperarea),series_name = SERIES_NAME[sort(table(SERIES_NAME),decreasing = TRUE)[1]],category_name_3 = CATEGORY_NAME_3[sort(table(CATEGORY_NAME_3),decreasing = TRUE)[1]]),by = c("BOOTH_CODE.y","contract_code")]
-colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","contract_code","saleperarea","series_name","category_name_3")
-sale_data_booth_sum_recent[is.na(BOOTH_CODE),"saleperarea"] = 0
+sale_data_booth_sum_recent = sale_data_month_booth_sum3[month_id>='2017-04',.(saleperarea = sum(saleperarea),series_name = SERIES_NAME[sort(table(SERIES_NAME),decreasing = TRUE)[1]],category_name_3 = CATEGORY_NAME_3[sort(table(CATEGORY_NAME_3),decreasing = TRUE)[1]]),by = c("BOOTH_CODE.y","contract_code","BEGIN_DATE")]
+colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","contract_code","BEGIN_DATE","saleperarea","series_name","category_name_3")
+# sale_data_booth_sum_recent[is.na(BOOTH_CODE),"saleperarea"] = 0
 saleperareaquantile = quantile(sale_data_booth_sum_recent$saleperarea,c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
 # saleperareainterval = cut(sale_data_booth_sum_recent$saleperarea,saleperareaquantile)
 sale_data_booth_sum_recent[,saleperareainterval := cut(saleperarea,saleperareaquantile)]
+# sale per area and per interval
+sale_data_booth_sum_recent[,TIME_SPAN := as.numeric(difftime(as.character(Sys.Date()),BEGIN_DATE))]
+sale_data_booth_sum_recent[,saleperareaperduration := saleperarea/TIME_SPAN]
+saleperareaperdurationquantile = quantile(sale_data_booth_sum_recent$saleperareaperduration,
+                                          c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
+sale_data_booth_sum_recent[,saleperareaperdurationinterval := cut(saleperareaperduration,saleperareaperdurationquantile)]
+
 
 #一楼楼层平面结构
 m1 = c(NA,"A0180160",NA,"A0180170",NA,"A0181090",NA,"A0181080",NA,"A0171081",NA,"A0181060","A0181050","A0181030","A0181010")
@@ -178,26 +185,7 @@ f1_str_m = rbind(m1,NA,m2,NA,m3,NA,m4,m5,m6,NA,m7)
 f1_str_m = as.matrix(f1_str_m)
 plot_floor_heat(f1_str_m)
 
-#四楼楼层平面结构
-m1 = c(NA,NA,"A0480170","A0480180","A0480190",NA,"A0481120","A0481110","A0481100",NA,NA,"A0481090","A0481080","A0481071","A0481060")
-m2 = c("A0480160",rep(NA,14))
-m3 = c("A0480130",NA,"A0480202","A0480202",NA,NA,"A0481180","A0481180","A0481170","A0481170","A0481160","A0481130",rep(NA,2),"A0481030")
-m4 = c("A0480130",NA,"A0480260","A0480300",NA,"A0482100","A0482100",rep(NA,7),"A0481020")
-m5 = c(rep(NA,6),"A0481280","A0481280","A0481270","A0481250",rep(NA,4),"A0481010")
-m6 = c("A0480110",rep(NA,3),"A0482010","A0482010","A0481360","A0481350","A0481270","A0481250",rep(NA,5))
-m7 = c("A0480110",NA,"A0480380","A0480360","A0480330",NA,"A0481530","A0481530","A0481520","A0481520","A0481510","A0481510","A0481380",NA,"A0481650")
-m8 = c(rep(NA,2),    "A0480500","A0480530","A0480530",NA,"A0481630","A0481610","A0481600","A0481590","A0481581","A0481561","A0481510",NA,"A0481660")
-m9 = c("A0480090",rep(NA,13),"A0481670")
-m10 = c("A0480030",rep(NA,14))
-m11 = c("A0480030","A0480031","A0480020","A0480010",NA,"A0480590","A0480590",rep(NA,2),"A0481710","A0481700","A0481690","A0481680",rep(NA,2))
-f4_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11)
-f4_str_m = as.matrix(f4_str_m)
-#plot with value:saleperarea and label:series
-plot_floor_heat(f4_str_m)
-#plot with value:saleperarea and label:category_name_3
-plot_floor_heat(f4_str_m,label_name = "category_name_3",value_name = "saleperareainterval")
-
-#二楼楼层平面结构
+#F2平面结构
 m1 = c(NA,NA,NA,0471,0386,0470,0513,0622,NA,0533,0511,0379,0621,NA,NA,0539,0459,0602,0602,0493,0493)
 m2 = m1
 m3 = NA
@@ -216,7 +204,7 @@ f2_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14)
 f2_str_m = as.matrix(f2_str_m)
 f2_str_m[] = as.character(f2_str_m)
 f2_str_m[] = paste_omit_na("0203010010",f2_str_m)
-plot_floor_heat(f2_str_m,label_name = c("series_name","category_name_3"),value_name = "saleperareainterval",filter_col = "contract_code")
+plot_floor_heat(f2_str_m,label_name = c("series_name","category_name_3"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code")
 
 #F3展位情况
 m1 = c(NA,NA,0670,0670,NA,NA,NA,0393,0247,0487,0540,NA,NA,NA,0358,0452,0337,NA,NA,NA,NA,0480,0426,0479,0383)
@@ -238,8 +226,88 @@ f3_str_m[] = as.character(f3_str_m)
 f3_str_m[] = paste_omit_na("0203010010",f3_str_m)
 plot_floor_heat(f3_str_m,label_name = c("series_name"),value_name = "saleperareainterval",filter_col = "contract_code")
 
+#四楼楼层平面结构
+m1 = c(NA,NA,"A0480170","A0480180","A0480190",NA,"A0481120","A0481110","A0481100",NA,NA,"A0481090","A0481080","A0481071","A0481060")
+m2 = c("A0480160",rep(NA,14))
+m3 = c("A0480130",NA,"A0480202","A0480202",NA,NA,"A0481180","A0481180","A0481170","A0481170","A0481160","A0481130",rep(NA,2),"A0481030")
+m4 = c("A0480130",NA,"A0480260","A0480300",NA,"A0482100","A0482100",rep(NA,7),"A0481020")
+m5 = c(rep(NA,6),"A0481280","A0481280","A0481270","A0481250",rep(NA,4),"A0481010")
+m6 = c("A0480110",rep(NA,3),"A0482010","A0482010","A0481360","A0481350","A0481270","A0481250",rep(NA,5))
+m7 = c("A0480110",NA,"A0480380","A0480360","A0480330",NA,"A0481530","A0481530","A0481520","A0481520","A0481510","A0481510","A0481380",NA,"A0481650")
+m8 = c(rep(NA,2),    "A0480500","A0480530","A0480530",NA,"A0481630","A0481610","A0481600","A0481590","A0481581","A0481561","A0481510",NA,"A0481660")
+m9 = c("A0480090",rep(NA,13),"A0481670")
+m10 = c("A0480030",rep(NA,14))
+m11 = c("A0480030","A0480031","A0480020","A0480010",NA,"A0480590","A0480590",rep(NA,2),"A0481710","A0481700","A0481690","A0481680",rep(NA,2))
+f4_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11)
+f4_str_m = as.matrix(f4_str_m)
+#plot with value:saleperarea and label:series
+plot_floor_heat(f4_str_m)
+#plot with value:saleperarea and label:category_name_3
+plot_floor_heat(f4_str_m,label_name = c("category_name_3","series_name"),value_name = "saleperareainterval")
+
+#F5
+m1 = c(NA,0611,rep(NA,4),0580,0335,0365,NA,NA,0346,0542,NA,NA,0360,0360,0408,0408)
+m2 = c(NA,0611,rep(NA,4),0580,0335,0365,0367,NA,0346,0542,NA,NA,0360,0360,0408,0408)
+m3 = NA
+m4 = c(0364,NA,NA,0382,0382,rep(NA,5),0678,0344,0385,0385,rep(NA,5))
+m5 = c(0364,NA,NA,0382,0382,rep(NA,5),NA,NA,NA,NA,rep(NA,4),0359)
+m6 = c(rep(NA,3),0420,0420,rep(NA,5),rep(0587,4),rep(NA,4),0359)
+m7 = c(rep(NA,3),0420,0420,NA,rep(0589,3),NA,rep(0587,4),rep(NA,4),0359)
+m8 = NA
+m9 = c(0258,NA,0409,0230,0209,NA,rep(0467,3),NA,0347,0347,0431,0345,0345,rep(NA,4))
+m10 = c(0258,NA,0409,0230,0209,rep(NA,5),0456,0456,0431,0345,0345,rep(NA,3),0351)
+m11 = c(NA,NA,0409,0371,0371,rep(NA,13),0351)
+m12 = c(0236,0236,rep(NA,17))
+m13 = c(0236,0236,rep(NA,17))
+m14 = c(0238,0238,rep(NA,17))
+m15 = c(0238,0238,rep(NA,17))
+m16 = c(0489,0489,0303,NA,NA,0466,0330,0330,NA,0407,0407,NA,0343,0432,0666,NA,NA,0556,0556)
+m17 = c(0489,0489,0303,0303,NA,0466,0330,NA,NA,NA,NA,NA,0343,0432,0666,NA,NA,0556,0556)
+f5_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,m16,m17)
+f5_str_m = as.matrix(f5_str_m)
+f5_str_m[] = as.character(f5_str_m)
+f5_str_m[] = paste_omit_na("0203010010",f5_str_m)
+plot_floor_heat(f5_str_m,label_name = c("series_name"),value_name = "saleperareainterval",filter_col = "contract_code")
+
+#F6
+m1 = c(NA,NA,NA,0614,NA,NA,NA,0687,0687,NA,NA,0418,0418,NA,NA,0372,0372,0645,0645)
+m2 = c(NA,NA,NA,0614,NA,NA,NA,0687,0687,0552,NA,0418,0418,NA,NA,0372,0372,0645,0645)
+m3 = NA
+m4 = c(NA,0613,NA,0573,0573,0573,rep(NA,5),0491,0491,0650,0650,NA,NA,0592,0592)
+m5 = c(NA,NA,NA,0573,0572,0572,NA,0661,0661,0661,NA,0553,0553,0414,0414,NA,NA,0592,0592)
+m6 = NA
+m7 = c(0656,NA,NA,0417,0648,0648,NA,0649,0188,0188,NA,0627,0627,0482,0492,0492,NA,NA,NA)
+m8 = c(NA,NA,NA,0417,0472,0472,rep(NA,5),0627,0627,0482,0492,0492,NA,0250,0250)
+m9 = NA
+m10 = c(0519,NA,0430,0430,rep(NA,7),0201,0494,0494,NA,0193,0193,NA,NA)
+m11 = c(0519,NA,0430,rep(NA,4),0222,0222,NA,NA,0201,0494,0494,rep(NA,5))
+m12 = c(0582,0582,0581,0581,rep(NA,15))
+f6_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
+f6_str_m = as.matrix(f6_str_m)
+f6_str_m[] = as.character(f6_str_m)
+f6_str_m[] = paste_omit_na("0203010010",f6_str_m)
+plot_floor_heat(f6_str_m,label_name = c("series_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code")
+
+#F7
+m1 = c(NA,NA,0390,rep(NA,7),0307,rep(NA,4))
+m2 = c(rep(NA,4),0388,rep(NA,10))
+m3 = c(NA,0557,NA,0490,0490,rep(NA,4),0568,0568,rep(NA,4))
+m4 = c(rep(NA,3),0317,0490,NA,0319,0319,NA,0514,0202,rep(NA,4))
+m5 = NA
+m6 = c(0315,NA,NA,0603,0603,NA,0357,0316,NA,0668,0284,0284,0451,NA,0308)
+m7 = c(NA,NA,NA,0603,0603,NA,NA,NA,NA,0668,0659,0451,0451,NA,NA)
+m8 = NA
+m9 = c(rep(NA,6),0560,0560,NA,0644,0282,0311,NA,0312,0660)
+f7_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9)
+f7_str_m = as.matrix(f7_str_m)
+f7_str_m[] = as.character(f7_str_m)
+f7_str_m[] = paste_omit_na("0203010010",f7_str_m)
+plot_floor_heat(f7_str_m,label_name = c("series_name"),value_name = "saleperareainterval",filter_col = "contract_code")
+
+
 # f1_value_m_melt <- ddply(f1_value_m_melt, .(variable), .fun = transform,rescale = rescale(value))
-p <- ggplot(f1_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = (value)),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f1_cat_m_melt$value))
+p <- ggplot(f1_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = (value)),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f1_cat_m_melt$value),angle = 45)
+p
 
 #plot specific shop trend in different category 
 #floor 1

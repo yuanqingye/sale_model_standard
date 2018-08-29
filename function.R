@@ -122,7 +122,7 @@ plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "sale
   f_cat_m[] = sapply(f_cat_m,unlist)
   f_cat_m$rownum = -(1:nrow(f_cat_m))
   f_cat_m_melt = melt(f_cat_m,id.vars = "rownum")
-  p <- ggplot(f_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = value),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f_cat_m_melt$value))
+  p <- ggplot(f_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = value),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f_cat_m_melt$value),angle = 45)
   p
 }
 
