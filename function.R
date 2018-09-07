@@ -4,7 +4,6 @@ library(plotrix)
 library(tidyr)
 library(plyr)
 library(scales)
-
 #contract related table
 #ods.ods_hana_bigbi_dim_contract_booth_detail_dt
 #hana BIGBI.dim_contract_detail
@@ -14,6 +13,8 @@ get_sale_data_by_mall_name = function(mall_name){
   sql = paste0("select date_id,ordr_date,prod_name,mall_name,shop_id,shop_name,contract_code,house_no,booth_id,booth_desc,cnt_cat1_num,cnt_cat2_num,cnt_cat3_num,is_coupon,partner_name,cont_cat1_name,cont_cat2_name,cont_cat3_name,act_amt from dl.fct_ordr where mall_name like '%",mall_name,"%' and 
  ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0))")
   result = read_data_hive_general(sql)
+  result$month_id = str_sub(result$ordr_date,1,7)
+  result = data.table(result)
   return(result)
 }
 
@@ -50,6 +51,26 @@ join_clean_sale_and_contract_data = function(sale_data_raw,contract){
   sale_data_picked = sale_data_picked[,avg_amt := act_amt/ACTUAL_AREA,]
   return(sale_data_picked)
 }
+
+#set up stall's metrics for ploting and further analysis
+setup_stall_metrics = function(sale_data_picked,start_month = '2017-04'){
+  #get the sale,sale per area,and order number for each stall and each month
+  sale_data_month_booth_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),order_num = .N),by = c("month_id","CATEGORY_NAME_3","FLOOR_NAME","BOOTH_CODE","BOOTH_NAME","BOOTH_GRADE","house_no","shop_name","shop_id","BRAND_NAME","SERIES_NAME","contract_code","CONTRACT_DURATION","BEGIN_DATE","FINISH_DATE")]
+  #sale data booth sum with series name and category name in it
+  sale_data_booth_sum_recent = sale_data_month_booth_sum[month_id>=start_month,.(saleperarea = sum(saleperarea),series_name = SERIES_NAME[sort(table(SERIES_NAME),decreasing = TRUE)[1]],category_name_3 = CATEGORY_NAME_3[sort(table(CATEGORY_NAME_3),decreasing = TRUE)[1]]),by = c("BOOTH_CODE","BOOTH_GRADE","contract_code","BEGIN_DATE")]
+  colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","BOOTH_GRADE","contract_code","BEGIN_DATE","saleperarea","series_name","category_name_3")
+  #sale per area in categorical form
+  sale_data_booth_sum_recent = sale_data_booth_sum_recent[!is.na(saleperarea),]
+  saleperareaquantile = quantile(sale_data_booth_sum_recent$saleperarea,c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
+  sale_data_booth_sum_recent[,saleperareainterval := cut(saleperarea,saleperareaquantile)]
+  # sale per area per time interval in categorical form
+  sale_data_booth_sum_recent[,TIME_SPAN := as.numeric(difftime(as.character(Sys.Date()),BEGIN_DATE))]
+  sale_data_booth_sum_recent[,saleperareaperduration := saleperarea/TIME_SPAN]
+  saleperareaperdurationquantile = quantile(sale_data_booth_sum_recent$saleperareaperduration,
+                                            c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
+  sale_data_booth_sum_recent[,saleperareaperdurationinterval := cut(saleperareaperduration,saleperareaperdurationquantile)]
+  return(sale_data_booth_sum_recent)
+  }
 
 palette <- c("dodgerblue1", "skyblue4", "chocolate1", "seagreen4",
              "bisque3", "red4", "purple4", "mediumpurple3",
@@ -121,7 +142,7 @@ plot_single_factor = function(dataset,
 
 #Plot heat plot for each floor with heat value sale etc. And the label may be series or category
 #most variable is caculated when testing
-plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "saleperareainterval",filter_col = "BOOTH_CODE"){
+plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "saleperareainterval",filter_col = "BOOTH_CODE",sale_data_booth_sum_recent = sale_data_booth_sum_recent){
   if(filter_col == "BOOTH_CODE"){
     f_value_m = apply(f_str_m,c(1,2),function(m){return(sale_data_booth_sum_recent[BOOTH_CODE == m,.SD[contract_code==max(contract_code),],by = "BOOTH_CODE"][[value_name]])})
   } 
