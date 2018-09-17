@@ -4,6 +4,8 @@ library(plotrix)
 library(tidyr)
 library(plyr)
 library(scales)
+library(stringr)
+library(easyGgplot2)
 #contract related table
 #ods.ods_hana_bigbi_dim_contract_booth_detail_dt
 #hana BIGBI.dim_contract_detail
@@ -57,14 +59,14 @@ setup_stall_metrics = function(sale_data_picked,start_month = '2017-04'){
   #get the sale,sale per area,and order number for each stall and each month
   sale_data_month_booth_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),order_num = .N),by = c("month_id","CATEGORY_NAME_3","FLOOR_NAME","BOOTH_CODE","BOOTH_NAME","BOOTH_GRADE","house_no","shop_name","shop_id","BRAND_NAME","SERIES_NAME","contract_code","CONTRACT_DURATION","BEGIN_DATE","FINISH_DATE")]
   #sale data booth sum with series name and category name in it
-  sale_data_booth_sum_recent = sale_data_month_booth_sum[month_id>=start_month,.(saleperarea = sum(saleperarea),series_name = SERIES_NAME[sort(table(SERIES_NAME),decreasing = TRUE)[1]],category_name_3 = CATEGORY_NAME_3[sort(table(CATEGORY_NAME_3),decreasing = TRUE)[1]]),by = c("BOOTH_CODE","BOOTH_GRADE","contract_code","BEGIN_DATE")]
-  colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","BOOTH_GRADE","contract_code","BEGIN_DATE","saleperarea","series_name","category_name_3")
+  sale_data_booth_sum_recent = sale_data_month_booth_sum[month_id>=start_month,.(saleperarea = sum(saleperarea),series_name = SERIES_NAME[sort(table(SERIES_NAME),decreasing = TRUE)[1]],category_name_3 = CATEGORY_NAME_3[sort(table(CATEGORY_NAME_3),decreasing = TRUE)[1]]),by = c("BOOTH_CODE","BOOTH_GRADE","contract_code","BEGIN_DATE","FINISH_DATE")]
+  colnames(sale_data_booth_sum_recent) = c("BOOTH_CODE","BOOTH_GRADE","contract_code","BEGIN_DATE","FINISH_DATE","saleperarea","series_name","category_name_3")
   #sale per area in categorical form
   sale_data_booth_sum_recent = sale_data_booth_sum_recent[!is.na(saleperarea),]
   saleperareaquantile = quantile(sale_data_booth_sum_recent$saleperarea,c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
   sale_data_booth_sum_recent[,saleperareainterval := cut(saleperarea,saleperareaquantile)]
   # sale per area per time interval in categorical form
-  sale_data_booth_sum_recent[,TIME_SPAN := as.numeric(difftime(as.character(Sys.Date()),BEGIN_DATE))]
+  sale_data_booth_sum_recent[,TIME_SPAN := as.numeric(difftime(pmin(as.character(Sys.Date()),FINISH_DATE),BEGIN_DATE))]
   sale_data_booth_sum_recent[,saleperareaperduration := saleperarea/TIME_SPAN]
   saleperareaperdurationquantile = quantile(sale_data_booth_sum_recent$saleperareaperduration,
                                             c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
@@ -200,6 +202,19 @@ plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "sale
   f_grade_m_melt$value = ifelse((f_grade_m_melt$value == "0"),"",f_grade_m_melt$value)
   p <- ggplot(f_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = value),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f_cat_m_melt$value),angle = 45)+geom_text(aes(label = f_grade_m_melt$value),color = "red")
   p
+}
+
+#mainly focus on one month per area,you can also devided by time span if you wish
+#the result is separated by category 2
+plot_by_category2_one_month = function(contract,sale_data_picked,begin_date = "2018-01-01",finish_date = "2018-01-31"){
+  time_contract_spec_month = contract[BEGIN_DATE<=begin_date & FINISH_DATE>=finish_date,]
+  area_cat2_spec_month = time_contract_spec_month[,.(area = sum(ACTUAL_AREA)),by = "CATEGORY_NAME_2"]
+  sale_cat2_spec_month = sale_data_picked[month_id == str_sub(begin_date,1,7),.(sale = sum(act_amt)),by = "CATEGORY_NAME_2"]
+  sale_area_cat2_spec_month = merge(sale_cat2_spec_month,area_cat2_spec_month,by = "CATEGORY_NAME_2",all.x = TRUE)
+  sale_area_cat2_spec_month = sale_area_cat2_spec_month[,avg_sale := sale/area]
+  sale_area_cat2_spec_month = sale_area_cat2_spec_month[order(avg_sale,decreasing = TRUE),]
+  sale_area_cat2_spec_month$CATEGORY_NAME_2 = factor(sale_area_cat2_spec_month$CATEGORY_NAME_2,levels = sale_area_cat2_spec_month$CATEGORY_NAME_2)
+  ggplot(data = sale_area_cat2_spec_month,mapping = aes(x = CATEGORY_NAME_2,y = avg_sale,fill = "good")) + geom_bar(stat = "identity") + scale_fill_manual(values=c("#9999CC"))+theme(axis.text.x = element_text(angle = 90, hjust = 1))
 }
 
 #plot in different chart
