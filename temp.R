@@ -71,18 +71,15 @@ ggplot(data = sale_data_cat3_sum, mapping = aes(x = cont_cat3_name,y = sale)) + 
 
 # sale_data_cat2_saleperarea_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),record_num = .N),by = c("cont_cat2_name")]
 sale_data_cat2_201801_sum = sale_data_picked[month_id == '2018-01',.(sale = sum(act_amt),record_num = .N),by = c("cont_cat2_name")]
-sale_area_cat2_201801 = merge(sale_data_cat2_201801_sum,area_cat2_201801,by.x = "cont_cat2_name",by.y = "CATEGORY_NAME_2",all.x = TRUE)
-sale_area_cat2_201801 = sale_area_cat2_201801[,saleperarea := sale/area]
+sale_data_cat2_201801_sum = sale_data_picked[month_id == '2018-01',.(sale = sum(act_amt),record_num = .N),by = c("CATEGORY_NAME_2")]
 
-sale_data_cat2_saleperarea_sum_2017 = sale_data_picked[month_id>='2017-01'&month_id<='2017-12',.(saleperarea = sum(avg_amt),record_num = .N),by = c("cont_cat2_name")]
-sale_data_cat2_saleperarea_sum_2018 = sale_data_picked[month_id>='2018-01'&month_id<='2018-12',.(saleperarea = sum(avg_amt),record_num = .N),by = c("cont_cat2_name")]
-plot_single_factor(sale_area_cat2_201801,"cont_cat2_name","saleperarea")
-plot_single_factor(sale_data_cat2_saleperarea_sum_2017,"cont_cat2_name","saleperarea")
-plot_single_factor(sale_data_cat2_saleperarea_sum_2018,"cont_cat2_name","saleperarea")
+sale_area_cat2_201801 = merge(sale_data_cat2_201801_sum,area_cat2_201801,by = "CATEGORY_NAME_2",all.x = TRUE)
+sale_area_cat2_201801 = sale_area_cat2_201801[,saleperarea := sale/area]
+plot_single_factor(sale_area_cat2_201801,"CATEGORY_NAME_2","saleperarea")
 
 #品类系数
-sale_data_cat2_saleperarea_sum[,saleperarea_median := median(saleperarea)]
-sale_data_cat2_saleperarea_sum[,cat2_index := saleperarea/saleperarea_median]
+sale_area_cat2_201801[,saleperarea_median := median(saleperarea,na.rm = TRUE)]
+sale_area_cat2_201801[,cat2_index := saleperarea/saleperarea_median]
 
 #品牌分布
 sale_data_brand_saleperarea_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),record_num = .N),by = c("cont_cat2_name","SERIES_NAME")]
@@ -101,7 +98,7 @@ treemap(sale_data_brand_saleperarea_sum[cont_cat2_name %in% cat_list,],index = c
 
 g = ggplot(data = sale_data_brand_saleperarea_sum[cont_cat2_name %in% cat_list,],mapping = aes(x = SERIES_NAME,
                                                                                            y = saleperarea,fill = cont_cat2_name))
-g = g + geom_bar(stat = "identity")
+g = g + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
 g + facet_grid(cont_cat2_name ~ .)
 g + facet_wrap(cont_cat2_name ~ .)
 

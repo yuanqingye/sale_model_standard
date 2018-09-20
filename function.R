@@ -72,7 +72,28 @@ setup_stall_metrics = function(sale_data_picked,start_month = '2017-04'){
                                             c(0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1))
   sale_data_booth_sum_recent[,saleperareaperdurationinterval := cut(saleperareaperduration,saleperareaperdurationquantile)]
   return(sale_data_booth_sum_recent)
-  }
+}
+
+#A method make average sale data in some period per area by some classifier
+generate_sale_perarea_by_catvar_in_period = function(sale_data_picked,contract_raw,begin_date,finish_date,catvar = "CATEGORY_NAME_2",join_var = "CATEGORY_NAME_2"){
+  #this step is the most fragile because the time span for 
+  time_contract = contract_raw[BEGIN_DATE<=begin_date & FINISH_DATE>=finish_date,]
+  area = time_contract[,.(area = sum(ACTUAL_AREA)),by = join_var]
+  sale = sale_data_picked[month_id >= str_sub(begin_date,1,7) & month_id <= str_sub(finish_date,1,7),.(sale = sum(act_amt)),by = catvar]
+  #join sale data and contract data togather
+  sale_area = merge(sale,area,by = join_var,all.x = TRUE)
+  sale_area = sale_area[,saleperarea := sale/area]
+  sale_area = sale_area[order(saleperarea,decreasing = TRUE),]
+  sale_area$id = 1:nrow(sale_area)
+  #if you don't ggplot on this dim,your plot won't order this way
+  sale_area$id = factor(sale_area$id,levels = sale_area$id)
+  return(sale_area)
+}
+
+function(sale_data_picked,contract_adjusted_area,catvar = "CATEGORY_NAME_2",join_var = "CATEGORY_NAME_2"){
+  area = time_contract[,.(Q1_area_sum = sum(Q1_area)),by = join_var]
+  
+}
 
 palette <- c("dodgerblue1", "skyblue4", "chocolate1", "seagreen4",
              "bisque3", "red4", "purple4", "mediumpurple3",
@@ -102,28 +123,15 @@ plot_single_booth = function(boothname = "A8125",dataset = sale_data_month_booth
   }
 }
 
-plot_avg_sale_on_month = function(begin_date,finish_date,catvar = "CATEGORY_NAME_2"){
-  time_contract = contract_raw[BEGIN_DATE<=begin_date & FINISH_DATE>=finish_date,]
-  area = time_contract[,.(area = sum(ACTUAL_AREA)),by = catvar]
-  sale = sale_data_picked[month_id >= str_sub(begin_date,1,7) & month_id <= str_sub(finish_date,1,7),.(sale = sum(act_amt)),by = catvar]
-  sale_area = merge(sale,area,by = catvar,all.x = TRUE)
-  sale_area = sale_area[,avg_sale := sale/area]
-  sale_area = sale_area[order(avg_sale,decreasing = TRUE),]
-  sale_area[[catvar]] = factor(sale_area[[catvar]],levels = sale_area[[catvar]])
-  sp = ggplot(data = sale_area,mapping = aes(x = eval(as.name(catvar)),y = avg_sale,fill = "good")) + geom_bar(stat = "identity") + scale_fill_manual(values=c("#9999CC"))+theme(axis.text.x = element_text(angle = 90, hjust = 1))
-  sp + facet_grid(facets=. ~ month_id)
-  # facet_grid(facets=. ~ gender)
-  # ggplot(data = sale_area,mapping = aes(x = "",y = avg_sale,fill = eval(as.name(catvar))))+geom_bar(stat = "identity")+coord_polar('y',start = 0)+scale_fill_brewer(palette="Dark2")+theme_minimal()
-  }
-
+#brandlist needed sometimes in filterexpression 
 plot_single_factor = function(dataset,
                               catvar,
                               valvar,
                               filterexpression = NULL,
+                              brandlist,
                               withoutlegend = TRUE) {
   # dataset = dataset[order(saleperarea,decreasing = TRUE),]
   setorderv(dataset, cols = c(valvar), order = -1)
-  facet_formula = as.formula(paste(catvar,"~ ."))
   dataset[[catvar]] <-
     factor(dataset[[catvar]], levels = dataset[[catvar]])
   if (!is.null(filterexpression)) {
@@ -131,6 +139,33 @@ plot_single_factor = function(dataset,
   }
   p = ggplot(data = dataset, aes(
     x = eval(as.name(catvar)),
+    y = eval(as.name(valvar)),
+    fill = eval(as.name(catvar))
+  )) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  if (withoutlegend) {
+    p + theme(legend.position = "none")
+  }
+  else{
+    p
+  }
+}
+
+plot_multiple_factor = function(dataset,
+                              catvar,
+                              itemvar,
+                              valvar,
+                              filterexpression = NULL,
+                              brandlist,
+                              withoutlegend = TRUE) {
+  # dataset = dataset[order(saleperarea,decreasing = TRUE),]
+  setorderv(dataset, cols = c(catvar,valvar),order = c(1,-1))
+  dataset[[itemvar]] <-
+    factor(dataset[[itemvar]], levels = dataset[[itemvar]])
+  if (!is.null(filterexpression)) {
+    dataset = dataset[eval(filterexpression), ]
+  }
+  p = ggplot(data = dataset, aes(
+    x = eval(as.name(itemvar)),
     y = eval(as.name(valvar)),
     fill = eval(as.name(catvar))
   )) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
@@ -205,16 +240,69 @@ plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "sale
 }
 
 #mainly focus on one month per area,you can also devided by time span if you wish
-#the result is separated by category 2
-plot_by_category2_one_month = function(contract,sale_data_picked,begin_date = "2018-01-01",finish_date = "2018-01-31"){
-  time_contract_spec_month = contract[BEGIN_DATE<=begin_date & FINISH_DATE>=finish_date,]
-  area_cat2_spec_month = time_contract_spec_month[,.(area = sum(ACTUAL_AREA)),by = "CATEGORY_NAME_2"]
-  sale_cat2_spec_month = sale_data_picked[month_id == str_sub(begin_date,1,7),.(sale = sum(act_amt)),by = "CATEGORY_NAME_2"]
-  sale_area_cat2_spec_month = merge(sale_cat2_spec_month,area_cat2_spec_month,by = "CATEGORY_NAME_2",all.x = TRUE)
-  sale_area_cat2_spec_month = sale_area_cat2_spec_month[,avg_sale := sale/area]
-  sale_area_cat2_spec_month = sale_area_cat2_spec_month[order(avg_sale,decreasing = TRUE),]
-  sale_area_cat2_spec_month$CATEGORY_NAME_2 = factor(sale_area_cat2_spec_month$CATEGORY_NAME_2,levels = sale_area_cat2_spec_month$CATEGORY_NAME_2)
-  ggplot(data = sale_area_cat2_spec_month,mapping = aes(x = CATEGORY_NAME_2,y = avg_sale,fill = "good")) + geom_bar(stat = "identity") + scale_fill_manual(values=c("#9999CC"))+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+#using generate_sale_perarea_by_catvar_in_period generate data and plot it
+plot_sale_perarea_by_catvar_in_period = function(sale_data_picked,contract_raw,begin_date,finish_date,catvar = "CATEGORY_NAME_2"){
+  sale_area = generate_sale_perarea_by_catvar_in_period(sale_data_picked,contract_raw,begin_date,finish_date,catvar = "CATEGORY_NAME_2")
+  sp = ggplot(data = sale_area,mapping = aes(x = eval(as.name(catvar)),y = avg_sale,fill = "good")) + geom_bar(stat = "identity") + scale_fill_manual(values=c("#9999CC"))+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  sp
+  # sp + facet_grid(facets=. ~ month_id)
+}
+
+plot_sale_perarea_by_cat2_brand = function(sale_data_picked,brandlist = c("实木","卫浴","瓷砖")){
+  brandlist = enc2utf8(brandlist)
+  sale_data_brand_saleperarea_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),record_num = .N),by = c("CATEGORY_NAME_2","SERIES_NAME")]
+  brand_plot_under_cat = list()
+  brand_plot_under_cat[[brandlist[[1]]]] = plot_single_factor(sale_data_brand_saleperarea_sum,"SERIES_NAME","saleperarea",expression(CATEGORY_NAME_2==brandlist[[1]]),brandlist = brandlist)
+  brand_plot_under_cat[[brandlist[[2]]]] = plot_single_factor(sale_data_brand_saleperarea_sum,"SERIES_NAME","saleperarea",expression(CATEGORY_NAME_2==brandlist[[2]]),brandlist = brandlist)
+  brand_plot_under_cat[[brandlist[[3]]]] = plot_single_factor(sale_data_brand_saleperarea_sum,"SERIES_NAME","saleperarea",expression(CATEGORY_NAME_2==brandlist[[3]]),brandlist = brandlist)
+  ggplot2.multiplot(brand_plot_under_cat[[brandlist[[1]]]],
+                    brand_plot_under_cat[[brandlist[[2]]]],
+                    brand_plot_under_cat[[brandlist[[3]]]], cols=3)
+}
+
+#plot sale data perarea by some classifier and weekday and weekend
+plot_sale_perarea_by_weekend = function(sale_data_picked,contract_raw,catvar,begin_date = "2018-07-01",finish_date="2018-07-31")
+{
+  Sys.setlocale(category = "LC_ALL", locale = "English_United States.1252")
+  sale_data_picked[,dayofweek := weekdays(as.Date(date_id,'%Y-%m-%d'))]
+  sale_data_picked[,ifweekend := ifelse(dayofweek %in% c("Saturday","Sunday"),"weekend","weekday")]
+  Sys.setlocale(category = "LC_ALL", locale = "")
+  #old name sale_data_cat2_week_saleperarea_sum
+  sale_perarea_by_weekend = generate_sale_perarea_by_catvar_in_period(sale_data_picked,contract_raw,begin_date,finish_date,c(catvar,"ifweekend"))
+  sale_perarea_by_weekend[,saleperarea_mirror := ifelse(ifweekend == "weekend",saleperarea,-saleperarea)]
+  p = ggplot(sale_perarea_by_weekend, aes(x=eval(parse(text = catvar)), y=saleperarea_mirror, fill=ifweekend)) + geom_bar(stat="identity", position="identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  print(p)
+  #calculate weekday/weekend ratio for further using
+  sale_perarea_by_weekend_dcast = dcast(sale_perarea_by_weekend,CATEGORY_NAME_2~ifweekend,value.var = "saleperarea")
+  sale_perarea_by_weekend_dcast[,weekend_index := weekend/weekday]
+  return(sale_perarea_by_weekend_dcast)
+}
+
+#plot sale data perarea by some classifier and dodged by different season(quarter)
+plot_sale_perarea_by_season = function(sale_data_picked,contract_raw,catvar,begin_date = "2018-07-01",finish_date="2018-07-31"){
+  sale_data_picked[,season := quarters(as.Date(date_id,'%Y-%m-%d'))]
+  #old var:sale_data_cat2_season_saleperarea_sum
+  sale_perarea_by_season = generate_sale_perarea_by_catvar_in_period(sale_data_picked,contract_raw,begin_date,finish_date,c(catvar,"season"))
+  p = ggplot(data = sale_perarea_by_season,aes(x = eval(parse(text = catvar)),y = saleperarea,group =season)) 
+  + geom_bar(stat = "identity", position = "dodge", aes(fill = season)) + theme(axis.text.x = element_text(angle = 90,hjust = 1))
+  print(p)
+  sale_perarea_by_season_dcast = dcast(sale_perarea_by_season,eval(parse(text = catvar))~season,value.var = "saleperarea")
+# sale_perarea_by_season_dcast = sale_perarea_by_season_dcast[,year]
+  return(sale_perarea_by_season_dcast)
+}
+
+#want to get each quater's adjusted area according to 
+calculate_weighted_area_on_quarter = function(contract_raw){
+  # ifinQ1 = contract_raw$BEGIN_DATE>"2017-03-31"|contract_raw$FINISH_DATE<"2017-01-01"
+  # calculate the time span inside each dedicated quarter
+  contract_raw[,c("Q1_area","Q2_area","Q3_area","Q4_area") := list(as.numeric(difftime(as.Date(pmin('2017-03-31',FINISH_DATE),'%Y-%m-%d'),as.Date(pmax('2017-01-01',BEGIN_DATE),'%Y-%m-%d')))/as.numeric(difftime(as.Date('2017-03-31','%Y-%m-%d'),as.Date('2017-01-01','%Y-%m-%d'))),
+                                                                   as.numeric(difftime(as.Date(pmin('2017-06-30',FINISH_DATE),'%Y-%m-%d'),as.Date(pmax('2017-04-01',BEGIN_DATE),'%Y-%m-%d')))/as.numeric(difftime(as.Date('2017-06-30','%Y-%m-%d'),as.Date('2017-04-01','%Y-%m-%d'))),
+                                                                   as.numeric(difftime(as.Date(pmin('2017-09-30',FINISH_DATE),'%Y-%m-%d'),as.Date(pmax('2017-07-01',BEGIN_DATE),'%Y-%m-%d')))/as.numeric(difftime(as.Date('2017-09-30','%Y-%m-%d'),as.Date('2017-07-01','%Y-%m-%d'))),
+                                                                   as.numeric(difftime(as.Date(pmin('2017-12-31',FINISH_DATE),'%Y-%m-%d'),as.Date(pmax('2017-10-01',BEGIN_DATE),'%Y-%m-%d')))/as.numeric(difftime(as.Date('2017-12-31','%Y-%m-%d'),as.Date('2017-10-01','%Y-%m-%d'))))]
+  #change the negative part to zero
+  contract_raw[,c("Q1_area","Q2_area","Q3_area","Q4_area") := list(pmax(0,Q1_area),pmax(0,Q2_area),pmax(0,Q3_area),pmax(0,Q4_area))]
+  #multiple area by percentage
+  contract_raw[,c("Q1_area","Q2_area","Q3_area","Q4_area") := list(ACTUAL_AREA*Q1_area,ACTUAL_AREA*Q2_area,ACTUAL_AREA*Q3_area,ACTUAL_AREA*Q4_area)]
 }
 
 #plot in different chart
