@@ -129,13 +129,13 @@ sale_data_cat2_week_saleperarea_sum_dcast = dcast(sale_data_cat2_week_saleperare
 sale_data_cat2_week_saleperarea_sum_dcast[,weekend_index := weekend/weekday]
 Sys.setlocale(category = "LC_ALL", locale = "")
 
-#季节性变动
+#季节性变动,因为对于品类单位面积的销售计算有分歧,故已重新编写函数进行计算
 sale_data_picked[,season := quarters(as.Date(date_id,'%Y-%m-%d'))]
 sale_data_cat2_season_saleperarea_sum = sale_data_picked[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),record_num = .N),by = c("cont_cat2_name","season")]
 p = ggplot(data = sale_data_cat2_season_saleperarea_sum,aes(x = cont_cat2_name,y = saleperarea,group =season))
 p + geom_bar(stat = "identity", position = "dodge", aes(fill = season)) + theme(axis.text.x = element_text(angle = 90,hjust = 1))
 
-#促销性变动
+#促销性变动,因为对于品类单位面积的销售计算有分歧,故已重新编写函数进行计算
 sale_data_cat2_onsale_saleperarea_sum = sale_data_picked_after_2016[,.(saleperarea = sum(avg_amt),sale = sum(act_amt),record_num = .N),by = c("cont_cat2_name","onsale")]
 p = ggplot(data = sale_data_cat2_onsale_saleperarea_sum,aes(x = cont_cat2_name,y = saleperarea,group = onsale))
 p + geom_bar(stat = "identity", position = "dodge", aes(fill = onsale)) + theme(axis.text.x = element_text(angle = 90,hjust = 1))
@@ -194,7 +194,7 @@ f1_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15)
 f1_str_m = as.matrix(f1_str_m)
 f1_str_m[] = as.character(f1_str_m)
 f1_str_m[] = paste_omit_na("0203010010",f1_str_m)
-plot_floor_heat(f1_str_m,label_name = c("series_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaijinqiao"]])
+plot_floor_heat(f1_str_m,label_name = c("brand_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaijinqiao"]])
 
 
 #F2平面结构
@@ -357,7 +357,7 @@ zbf1_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,m16,m17,m1
 zbf1_str_m = as.matrix(zbf1_str_m)
 zbf1_str_m[] = as.character(zbf1_str_m)
 zbf1_str_m[] = paste_omit_na("020041000",zbf1_str_m)
-plot_floor_heat(zbf1_str_m,label_name = c("series_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
+plot_floor_heat(zbf1_str_m,label_name = c("brand_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
 
 #上海真北商场
 #F2
@@ -390,7 +390,7 @@ zbf2_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,m16,m17,m1
 zbf2_str_m = as.matrix(zbf2_str_m)
 zbf2_str_m[] = as.character(zbf2_str_m)
 zbf2_str_m[] = paste_omit_na("020041000",zbf2_str_m)
-plot_floor_heat(zbf2_str_m,label_name = c("series_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
+plot_floor_heat(zbf2_str_m,label_name = c("brand_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
 
 
 #上海真北商场
@@ -419,7 +419,7 @@ zbf3_str_m = rbind(m1,m2,m3,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,m16,m17,m18,m
 zbf3_str_m = as.matrix(zbf3_str_m)
 zbf3_str_m[] = as.character(zbf3_str_m)
 zbf3_str_m[] = paste_omit_na("020041000",zbf3_str_m)
-plot_floor_heat(zbf3_str_m,label_name = c("category_name_3"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
+plot_floor_heat(zbf3_str_m,label_name = c("brand_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
 
 #上海真北商场
 #F4
@@ -450,7 +450,7 @@ zbf4_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,m16,m17,m1
 zbf4_str_m = as.matrix(zbf4_str_m)
 zbf4_str_m[] = as.character(zbf4_str_m)
 zbf4_str_m[] = paste_omit_na("020041000",zbf4_str_m)
-plot_floor_heat(zbf4_str_m,label_name = c("category_name_3"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
+plot_floor_heat(zbf4_str_m,label_name = c("brand_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
 
 #上海真北商场
 #F5
@@ -478,7 +478,7 @@ zbf5_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,m16,m17,m1
 zbf5_str_m = as.matrix(zbf5_str_m)
 zbf5_str_m[] = as.character(zbf5_str_m)
 zbf5_str_m[] = paste_omit_na("020041000",zbf5_str_m)
-plot_floor_heat(zbf5_str_m,label_name = c("category_name_3"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
+plot_floor_heat(zbf5_str_m,label_name = c("brand_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
 
 #上海真北商场
 #F6
@@ -506,7 +506,7 @@ zbf6_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,m16,m17,m1
 zbf6_str_m = as.matrix(zbf6_str_m)
 zbf6_str_m[] = as.character(zbf6_str_m)
 zbf6_str_m[] = paste_omit_na("020041000",zbf6_str_m)
-plot_floor_heat(zbf6_str_m,label_name = c("category_name_3"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
+plot_floor_heat(zbf6_str_m,label_name = c("brand_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
 
 #上海真北商场
 #B1 L:29,W:26
@@ -540,7 +540,7 @@ zbb1_str_m = rbind(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,m16,m17,m1
 zbb1_str_m = as.matrix(zbb1_str_m)
 zbb1_str_m[] = as.character(zbb1_str_m)
 zbb1_str_m[] = paste_omit_na("020041000",zbb1_str_m)
-plot_floor_heat(zbb1_str_m,label_name = c("category_name_3"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
+plot_floor_heat(zbb1_str_m,label_name = c("brand_name"),value_name = "saleperareaperdurationinterval",filter_col = "contract_code",sale_data_stall_sum_list[["shanghaizhenbei"]])
 
 
 # f1_value_m_melt <- ddply(f1_value_m_melt, .(variable), .fun = transform,rescale = rescale(value))
@@ -659,3 +659,26 @@ f <- function (x) {
   return(z)
 }
 f(5)
+
+compare_brand_list = list()
+
+temp = merge(sale_data_stall_sum_list[["shanghaijinqiao"]],sale_data_stall_sum_list[["shanghaijinqiao"]],by = "brand_name",allow.cartesian = TRUE)
+temp2 = temp[,c("brand_name","contract_code.x","contract_code.y","BOOTH_CODE.x","BOOTH_CODE.y","BEGIN_DATE.x","BEGIN_DATE.y","saleperareaperduration.x","saleperareaperduration.y")]
+temp3 = temp2[contract_code.x!=contract_code.y|BEGIN_DATE.x!= BEGIN_DATE.y,]
+temp4 = temp3[contract_code.x > contract_code.y|(contract_code.x==contract_code.y & BEGIN_DATE.x > BEGIN_DATE.y),]
+temp5 = temp4[BEGIN_DATE.x == BEGIN_DATE.y,]
+temp5$BEGIN_DATE.x = NULL
+temp5$BEGIN_DATE.y = NULL
+compare_brand_list[["shanghaijinqiao"]] = temp5
+
+temp = merge(sale_data_stall_sum_list[["shanghaizhenbei"]],sale_data_stall_sum_list[["shanghaizhenbei"]],by = "brand_name",allow.cartesian = TRUE)
+temp2 = temp[,c("brand_name","contract_code.x","contract_code.y","BOOTH_CODE.x","BOOTH_CODE.y","BEGIN_DATE.x","BEGIN_DATE.y","saleperareaperduration.x","saleperareaperduration.y")]
+temp3 = temp2[contract_code.x!=contract_code.y|BEGIN_DATE.x!= BEGIN_DATE.y,]
+temp4 = temp3[contract_code.x > contract_code.y|(contract_code.x==contract_code.y & BEGIN_DATE.x > BEGIN_DATE.y),]
+temp5 = temp4[BEGIN_DATE.x == BEGIN_DATE.y,]
+temp5$BEGIN_DATE.x = NULL
+temp5$BEGIN_DATE.y = NULL
+compare_brand_list[["shanghaizhenbei"]] = temp5
+
+source('~/Rfile/R_hana.R', encoding = 'UTF-8')
+temp = read_data_from_hana("select * from BIGBI.dim_contract_detail where mall_name like '上海真北商场'")
