@@ -82,8 +82,8 @@ sale_perarea_by_weekend_dcast = plot_sale_perarea_by_weekend(sale_data_picked_li
 sale_perarea_by_season = plot_sale_perarea_by_season(sale_data_picked_list[["shanghaijinqiao"]],contract_list[["shanghaijinqiao"]],year = "2017",catvar = "CATEGORY_2_EDIT")
 #品类单位面积销量（当下限定在某个月）在促销和非促销情形下的比较
 sale_perarea_by_onsale = plot_sale_perarea_by_onsale(sale_data_picked_list[["shanghaijinqiao"]],on_sale_data,contract_list[["shanghaijinqiao"]],catvar = "CATEGORY_2_EDIT",year = '2017')
-#品类单位面积销量（当下限定在某个月）不同年的比较  
-sale_perarea_by_year = plot_sale_perarea_by_year(sale_data_picked_list[["shanghaijinqiao"]],contract_list[["shanghaijinqiao"]],catvar = "CATEGORY_2_EDIT")
+#品类单位面积销量（当下限定在某个月）不同年的比较(函数未完成所以加注)  
+# sale_perarea_by_year = plot_sale_perarea_by_year(sale_data_picked_list[["shanghaijinqiao"]],contract_list[["shanghaijinqiao"]],catvar = "CATEGORY_2_EDIT")
 
 #find the intersection of these 2 malls
 intersected_brand = data.frame(brand_name = intersect(unique(contract_list[["shanghaizhenbei"]]$BRAND_NAME),unique(contract_list[["shanghaijinqiao"]]$BRAND_NAME)))
