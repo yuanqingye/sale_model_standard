@@ -687,16 +687,6 @@ oneness_partner = read_data_from_hana("select * from BIGBI.jxs_partner_dz")
 # source('~/Rfile/R_impala.R',encoding = 'UTF-8')
 source("~/Rfile/R_hive.R",encoding = 'UTF-8')
 
-# this too large data set
-# shanghai_sale_data_sql = "select date_id,ordr_date,prod_name,mall_name,shop_id,shop_name,city,contract_code,house_no,booth_id,booth_desc,cnt_cat1_num,cnt_cat2_num,cnt_cat3_num,is_coupon,partner_name,cont_cat1_name,cont_cat2_name,cont_cat3_name,act_amt from dl.fct_ordr where city = '上海市' and \n((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0))"
-shanghai_sale_data_sql = "select min(date_id) as min_date_id,mall_name,shop_id,shop_name,mall_city_name,contract_code,house_no,booth_id,booth_desc,partner_name,sum(act_amt) as sum_act_amt,count(act_amt) as freq from dl.fct_ordr where mall_city_name = '上海市' and ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0)) and (date_id >= '2017-01-01' and date_id <= '2017-12-31')
-group by contract_code,mall_name,shop_id,shop_name,mall_city_name,contract_code,house_no,booth_id,booth_desc,partner_name"
-shanghai_sale_data = read_data_hive_general(shanghai_sale_data_sql)
-
-shanghai_sale_data = data.table(shanghai_sale_data)
-shanghai_sale_partner_data = shanghai_sale_data[,.(sum_act_amt = sum(sum_act_amt),freq = sum(freq)),by = c("partner_name","mall_name")]
-compare_sale_census = merge(shanghai_sale_partner_data,partner_sale_census[,c("经销商名称","去年红星销售摸底","去年总销售规模")],by.x = "partner_name",by.y = "经销商名称")
-
 shanghai_sale_data_sql = "select min(date_id) as min_date_id,partner_code,partner_name,mall_name,mall_city_name,contract_code,shop_id,shop_name,house_no,booth_id,booth_desc,sum(act_amt) as sum_act_amt,count(act_amt) as freq
 from
 (select date_id,partner_name,l2.partner_code,mall_name,mall_city_name,contract_code,shop_id,shop_name,house_no,booth_id,booth_desc,act_amt from dl.fct_ordr l1,(select distinct partner_code from dl.fct_ordr where mall_city_name like '上海市' and date_id >= '2017-01-01' and date_id <= '2017-12-31' and ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0))) l2
@@ -707,25 +697,17 @@ and
 and l1.partner_code = l2.partner_code) l3
 group by contract_code,mall_name,shop_id,shop_name,mall_city_name,house_no,booth_id,booth_desc,partner_code,partner_name"
 
-shanghai_sale_data2 = read_data_hive_general(shanghai_sale_data_sql)
-
-test_shanghai_sale_data_sql = "select min(date_id) as min_date_id,partner_code,partner_name,mall_name,mall_city_name,contract_code,shop_id,shop_name,house_no,booth_id,booth_desc,sum(act_amt) as sum_act_amt,count(act_amt) as freq
-from dl.fct_ordr
-  where
-  ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0)) 
-  and 
-  (date_id >= '2017-01-01' and date_id <= '2017-12-31')
-  and mall_city_name like '上海市'
-group by contract_code,mall_name,shop_id,shop_name,mall_city_name,house_no,booth_id,booth_desc,partner_code,partner_name"
-
-shanghai_sale_data3 = read_data_hive_general(test_shanghai_sale_data_sql)
+shanghai_sale_data = read_data_hive_general(shanghai_sale_data_sql)
 
 #两个问题
-# 1如何匹配那些没有对应到的销售记录(半监督)
+# 1如何匹配那些没有对应到的销售记录(先检查,半监督)
 # 2因为有相当一部分高于,相当一部分低于,到底有什么样的规律?
-shanghai_sale_data2 = data.table(shanghai_sale_data2)
-# shanghai_sale_data_partner = shanghai_sale_data2[,.(freq = sum(freq),sum_act_amt = sum(sum_act_amt)),by = c("partner_code","partner_name")]
-shanghai_sale_data_partner = shanghai_sale_data2[,.(freq = sum(freq),sum_act_amt = sum(sum_act_amt),partner_name = .SD[1,]$partner_name),by = c("partner_code")]
+# 3区分代码不同但是实际是同一个经销商的经销商
+# 4摸底销售为0的经销商表里确实摸底为0
+shanghai_sale_data = data.table(shanghai_sale_data)
+# shanghai_sale_data_partner = shanghai_sale_data[,.(freq = sum(freq),sum_act_amt = sum(sum_act_amt),partner_name = .SD[1,]$partner_name),by = c("partner_code")]
+# above method will also sample the sum and count, alternative ways:
+shanghai_sale_data_partner = shanghai_sale_data[,.(freq = sum(freq),sum_act_amt = sum(sum_act_amt),partner_name = max(partner_name)),by = c("partner_code")]
 shanghai_sale_data_partner$sum_act_amt = shanghai_sale_data_partner$sum_act_amt/10000
 duplicated_shanghai_sale_data_partner = shanghai_sale_data_partner[duplicated(partner_name)|duplicated(partner_name,fromLast = TRUE),]
 unduplicated_shanghai_sale_data_partner = shanghai_sale_data_partner[!(duplicated(partner_name)|duplicated(partner_name,fromLast = TRUE)),]
@@ -733,23 +715,23 @@ unduplicated_shanghai_sale_data_partner = shanghai_sale_data_partner[!(duplicate
 
 partner_sale_census = readxl::read_xls("~/data/partner_info_1129.xls")
 partner_sale_census$partner_code = paste0("00",partner_sale_census$商户号)
-compare_sale_census = merge(shanghai_sale_data_partner,partner_sale_census[,c("去年红星销售摸底","去年总销售规模","partner_code")],by = "partner_code")
-colnames(compare_sale_census) = c("partner_code","freq","sum_act_amt","partner_name","sum_act_amt_redstar_estimated","sum_act_amt_estimated")
-View(compare_sale_census[sum_act_amt< sum_act_amt_redstar_estimated,])
-median(compare_sale_census$sum_act_amt)
-median(compare_sale_census$sum_act_amt_redstar_estimated)
+partner_sale_census$partner_name = partner_sale_census$经销商名称;
 
-View(shanghai_sale_data_partner[duplicated(partner_name)|duplicated(partner_name,fromLast = TRUE),])
+compare_sale_census = merge(shanghai_sale_data_partner,partner_sale_census[,c("去年红星销售摸底","去年总销售规模","partner_code")],by = "partner_code")
+compare_sale_census = merge(shanghai_sale_data_partner,partner_sale_census[,c("去年红星销售摸底","去年总销售规模","partner_name")],by = "partner_name")
+
+library(sqldf)
+res <- sqldf("SELECT l.*, r.*
+             FROM df as l
+             LEFT JOIN df2 as r
+             on l.s = r.s2 OR l.s = r.b2")
+
+colnames(compare_sale_census) = c("partner_code","freq","sum_act_amt","partner_name","sum_act_amt_redstar_estimated","sum_act_amt_estimated")
 
 #so first look at the general picture then decide what to do next.
-data_points = compare_sale_census[,c("sum_act_amt","sum_act_amt_redstar_estimated")]
 compare_sale_census = data.table(compare_sale_census)
 library(ggplot2)
-ggplot(data = data_points,mapping = aes(x = sum_act_amt_redstar_estimated,y = sum_act_amt)) + geom_point(colour = 'red') + coord_fixed(ratio = 1, xlim = c(0,20000), ylim = c(0,20000))
-
-
-data_points = compare_sale_census[,.(sum_act_amt = log10(sum_act_amt),sum_act_amt_redstar_estimated = log10(sum_act_amt_redstar_estimated))]
-data_points[,sale_vs_claim := ifelse(sum_act_amt>sum_act_amt_redstar_estimated,"sale_is_bigger","claim_is_bigger")]
+data_points = compare_sale_census[,.(sum_act_amt = log10(sum_act_amt),sum_act_amt_redstar_estimated = log10(sum_act_amt_redstar_estimated),sale_vs_claim = ifelse(sum_act_amt>sum_act_amt_redstar_estimated,"sale_is_bigger","claim_is_bigger"))]
 ggplot(data = data_points,mapping = aes(x = sum_act_amt_redstar_estimated,y = sum_act_amt,colour = sale_vs_claim)) + 
   geom_point() + coord_fixed(ratio = 1, xlim = c(0,10), ylim = c(0,10)) + 
   geom_abline(slope = 1)
