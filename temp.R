@@ -682,8 +682,10 @@ compare_brand_list[["shanghaizhenbei"]] = temp5
 
 source('~/Rfile/R_hana.R', encoding = 'UTF-8')
 temp = read_data_from_hana("select * from BIGBI.dim_contract_detail where mall_name like '上海真北商场'")
+#to unify partner with different code 
 oneness_partner = read_data_from_hana("select * from BIGBI.jxs_partner_dz")
 
+#The following is regarding how to deal with accurate sale number
 # source('~/Rfile/R_impala.R',encoding = 'UTF-8')
 source("~/Rfile/R_hive.R",encoding = 'UTF-8')
 
@@ -716,18 +718,24 @@ unduplicated_shanghai_sale_data_partner = shanghai_sale_data_partner[!(duplicate
 partner_sale_census = readxl::read_xls("~/data/partner_info_1129.xls")
 partner_sale_census$partner_code = paste0("00",partner_sale_census$商户号)
 partner_sale_census$partner_name = partner_sale_census$经销商名称;
+partner_sale_census$contact_name = partner_sale_census$`联系人-姓名`
+partner_sale_census_part = partner_sale_census[,c("去年红星销售摸底","去年总销售规模","partner_name","partner_code","contact_name")]
+colnames(partner_sale_census_part)[1:2] = c("redstar_sale_estimated","general_sale_estimated")
 
 compare_sale_census = merge(shanghai_sale_data_partner,partner_sale_census[,c("去年红星销售摸底","去年总销售规模","partner_code")],by = "partner_code")
 compare_sale_census = merge(shanghai_sale_data_partner,partner_sale_census[,c("去年红星销售摸底","去年总销售规模","partner_name")],by = "partner_name")
 
+
 library(sqldf)
 res <- sqldf("SELECT l.*, r.*
-             FROM df as l
-             LEFT JOIN df2 as r
-             on l.s = r.s2 OR l.s = r.b2")
+             FROM shanghai_sale_data_partner as l
+             INNER JOIN partner_sale_census_part as r
+             on l.partner_code = r.partner_code
+             OR 
+             l.partner_name in (r.partner_name,r.contact_name)")
 
 colnames(compare_sale_census) = c("partner_code","freq","sum_act_amt","partner_name","sum_act_amt_redstar_estimated","sum_act_amt_estimated")
-
+colnames(res) = c("partner_code","freq","sum_act_amt","partner_name","sum_act_amt_redstar_estimated","sum_act_amt_estimated","estimate_partner_name","estimate_partner_code","contact_name")
 #so first look at the general picture then decide what to do next.
 compare_sale_census = data.table(compare_sale_census)
 library(ggplot2)
@@ -739,3 +747,80 @@ ggplot(data = data_points,mapping = aes(x = sum_act_amt_redstar_estimated,y = su
 a = data_points[,.(sum_act_amt,sum_act_amt_redstar_estimated,color_name = ifelse(sum_act_amt>sum_act_amt_redstar_estimated,"green","orange"))]
 ggplot(data = a,mapping = aes(x = sum_act_amt_redstar_estimated,y = sum_act_amt)) + 
   geom_point(colour = a$color_name) + coord_fixed(ratio = 1, xlim = c(0,5), ylim = c(0,5))
+
+#using decision tree to get the difference,偏差过大,远远低于可能都需要训练
+#订单时间规律:最短非零时间间隔,单位时间内最大订单数,N连比例(或者孤立点比例) OK
+#订单各类型比例	ordr_status semi OK
+#订单所属品牌最多大类,二类(如没有,需要做关联)(缺失的少,暂时不用关联) OK
+#订单中大(小)订单占的比例(以500元做划分) OK
+#覆盖铺位数 OK
+#购买人姓名电话异同 OK
+#订单某些关键字段的缺失率 OK
+source("~/Rfile/R_hive.R",encoding = 'UTF-8')
+shanghai_sale_data_detail_sql = "select date_id,ordr_date,partner_code,partner_name,mall_name,mall_city_name,contract_code,shop_id,shop_name,house_no,booth_id,booth_desc,act_amt,ordr_type,cust_name,is_promotion,ordr_status,sale_type,cont_unit_price,prod_avg_discnt_rate,cont_main_brand_name,cont_cat1_name,cont_cat1_code,cont_cat2_name,cont_cat2_code,cont_cat3_name,cont_cat3_code
+from
+(select date_id,ordr_date,partner_name,l2.partner_code,mall_name,mall_city_name,contract_code,shop_id,shop_name,house_no,booth_id,booth_desc,act_amt,ordr_type,cust_name,is_promotion,ordr_status,sale_type,cont_unit_price,prod_avg_discnt_rate,cont_main_brand_name,cont_cat1_name,cont_cat1_code,cont_cat2_name,cont_cat2_code,cont_cat3_name,cont_cat3_code from dl.fct_ordr l1,(select distinct partner_code from dl.fct_ordr where mall_city_name like '上海市' and date_id >= '2017-01-01' and date_id <= '2017-12-31' and ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0))) l2
+where
+((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0)) 
+and 
+(date_id >= '2017-01-01' and date_id <= '2017-12-31')
+and l1.partner_code = l2.partner_code) l3"
+
+shanghai_sale_data_detail = read_data_hive_general(shanghai_sale_data_detail_sql)
+shanghai_sale_data_detail$new_order_date = ymd_hms(shanghai_sale_data_detail$ordr_date,tz=Sys.timezone())
+setDT(shanghai_sale_data_detail)
+shanghai_sale_data_detail = shanghai_sale_data_detail[order(partner_code,new_order_date),]
+
+#time related calculation
+#get time gap 
+shanghai_sale_data_process = shanghai_sale_data_detail[,.(time_diff = diff(as.numeric(new_order_date))),by = "partner_code"]
+#0040002006
+shanghai_sale_data_detail[,.(freq_per_day = .N),by = c("partner_code","date_id")][,.(max_freq_in_day = max(freq_per_day)),by = "partner_code"]
+shanghai_sale_data_process[,.(reg_time_perc = sum(time_diff%%86400 == 0)/.N),by = "partner_code"]
+shanghai_sale_data_process[,.(min_time_space = min(time_diff)),by = "partner_code"]
+shanghai_sale_data_process[,.(min_time_space = min(time_diff[time_diff>0])),by = "partner_code"][,.(partner_code,ifelse(min_time_space == Inf,86400,min_time_space))]
+shanghai_sale_data_process[,.(max_cont_hit = get_max_cont_hit(time_diff)),by = "partner_code"]
+shanghai_sale_data_process[,.(max_cont_hit_nozero = get_max_cont_hit(time_diff,cond = expression(v[i]<300 && v[i]!=0))),by = "partner_code"]
+shanghai_sale_data_process[,.(isolated_perc = get_num_isolated_points(time_diff)/(.N+1)),by = "partner_code"]
+
+#percentage between big sale and small sale
+shanghai_sale_data_process_bigsaleperc = shanghai_sale_data_detail[,.(over_500_sum = sum(act_amt>500),below_500_sum = sum(act_amt<=500)),by = "partner_code"]
+shanghai_sale_data_process_bigsaleperc[,big_sale_percentage := over_500_sum/(below_500_sum + over_500_sum)]
+#percentage for ordr_type
+shanghai_sale_data_process = shanghai_sale_data_detail[,.(diff_ordr_status = unique(ordr_status)),by = "partner_code"]
+#num of booth
+shanghai_sale_data_process_boothnum = shanghai_sale_data_detail[,.(num_booth = uniqueN(booth_id)),by = "partner_code"]
+#num of average num in each cust over total number
+shanghai_sale_data_detail[,.(num_in_category = .N),by = c("partner_code","cust_name")][,.(avg_in_category = sqrt(sum(num_in_category))/.N),by = "partner_code"]
+shanghai_sale_data_process_custentropy = shanghai_sale_data_detail[,.(num_in_category = .N),by = c("partner_code","cust_name")][,.(p = num_in_category/sum(num_in_category),category_num = .N),by = c("partner_code")][,.(cust_entropy = sum(-p*log(p))/category_num),by = c("partner_code","category_num")]
+
+#category of the max num in each partner_code and its percentage
+shanghai_sale_data_process_cat1percname = shanghai_sale_data_detail[,.(num_in_cat1 = .N),by = c("partner_code","cont_cat1_name")][,.SD[num_in_cat1==max(num_in_cat1),"cont_cat1_name"][1,],by = "partner_code"]
+shanghai_sale_data_process_cat1percvalue = shanghai_sale_data_detail[,.(num_in_cat1 = .N),by = c("partner_code","cont_cat1_name")][,.(cat1_perc_value = max(num_in_cat1)/sum(num_in_cat1)),by = "partner_code"]
+shanghai_sale_data_process_cat1perc = merge(shanghai_sale_data_process_cat1percname,shanghai_sale_data_process_cat1percvalue,all.x = TRUE,by = "partner_code")
+shanghai_sale_data_process_cat2percname = shanghai_sale_data_detail[,.(num_in_cat2 = .N),by = c("partner_code","cont_cat2_name")][,.SD[num_in_cat2==max(num_in_cat2),"cont_cat2_name"][1,],by = "partner_code"]
+shanghai_sale_data_process_cat2percvalue = shanghai_sale_data_detail[,.(num_in_cat2 = .N),by = c("partner_code","cont_cat2_name")][,.(cat2_perc_value = max(num_in_cat2)/sum(num_in_cat2)),by = "partner_code"]
+shanghai_sale_data_process_cat2perc = merge(shanghai_sale_data_process_cat2percname,shanghai_sale_data_process_cat2percvalue,all.x = TRUE,by = "partner_code")
+shanghai_sale_data_process_cat3percname = shanghai_sale_data_detail[,.(num_in_cat3 = .N),by = c("partner_code","cont_cat3_name")][,.SD[num_in_cat3==max(num_in_cat3),"cont_cat3_name"][1,],by = "partner_code"]
+shanghai_sale_data_process_cat3percvalue = shanghai_sale_data_detail[,.(num_in_cat3 = .N),by = c("partner_code","cont_cat3_name")][,.(cat3_perc_value = max(num_in_cat3)/sum(num_in_cat3)),by = "partner_code"]
+shanghai_sale_data_process_cat3perc = merge(shanghai_sale_data_process_cat3percname,shanghai_sale_data_process_cat3percvalue,all.x = TRUE,by = "partner_code")
+
+#missing value pattern
+shanghai_sale_data_process_missingpattern = shanghai_sale_data_detail[,.(missing_house_no = sum(is.na(house_no))/.N,missing_cont_unit_price = sum(is.na(cont_unit_price))/.N),by = "partner_code"]
+
+#order status pattern
+shanghai_sale_data_detail[,.(num_of_status = .N),by = c("partner_code","ordr_status")][(ordr_status!="Y")&(ordr_status!="N"),.(num_of_status/sum(num_of_status),ordr_status),by = "partner_code"]
+shanghai_sale_data_detail[,.(num_of_status = .N),by = c("partner_code","ordr_status")][,c(.SD[(ordr_status!="Y")&(ordr_status!="N"),unlist(num_of_status/sum(num_of_status),ordr_status)],.SD[(ordr_status=="Y")|(ordr_status=="N"),unlist(num_of_status/sum(num_of_status),ordr_status)]),by = "partner_code"]
+shanghai_sale_data_process_statuspatterntemp = shanghai_sale_data_detail[,.(num_of_status = .N),by = c("partner_code","ordr_status")][,.(num_of_status/sum(num_of_status),ordr_status),by = "partner_code"]
+#3,15 means already paid
+shanghai_sale_data_process_statuspattern = dcast.data.table(shanghai_sale_data_process_statuspatterntemp,partner_code~ordr_status,value.var = "V1")
+
+#combine all together
+
+
+
+ID <- c(1,1,1,2,2,2,2,3,3)
+Value <- c(2,3,5,2,5,8,17,3,5)
+Event <- c(1,1,2,1,2,1,2,2,2)
+
+group <- data.table(Subject=ID, pt=Value, Event=Event)

@@ -402,3 +402,57 @@ test_function = function(){
   result = paste0(unlist(l),"\n",unlist(l))
   print(result)
 }
+
+compare_onpaper_estimation = function(data){
+  library(ggplot2)
+  data = data.table(data)
+  data_points = data[,.(sum_act_amt = log10(sum_act_amt),sum_act_amt_redstar_estimated = log10(sum_act_amt_redstar_estimated),sale_vs_claim = ifelse(sum_act_amt>sum_act_amt_redstar_estimated,"sale_is_bigger","claim_is_bigger"))]
+  ggplot(data = data_points,mapping = aes(x = sum_act_amt_redstar_estimated,y = sum_act_amt,colour = sale_vs_claim)) + 
+    geom_point() + coord_fixed(ratio = 1, xlim = c(0,10), ylim = c(0,10)) + 
+    geom_abline(slope = 1)
+}
+
+#获取最大连击数
+get_max_cont_hit = function(v,cond = expression(v[i]<300)){
+  k = 0
+  max = 0 
+  for(i in 1:length(v)){
+    if(eval(cond)){
+      k = k + 1
+      if(max<k){
+        max = k
+      }
+    }
+    else{
+      k = 0
+    }
+  }
+  return(max)
+}
+
+#获取孤立点个数
+get_num_isolated_points = function(v){
+  num = 0
+  n = length(v)
+  for(i in 1:(n+1)){
+    if(i == 1){
+      if(v[i] >300){
+        num = num + 1
+      }
+    }
+    else if(i == (n+1)){
+      if(v[i-1] > 300){
+        num = num + 1
+      }
+    }
+    else{
+      if((v[i-1] >300) & (v[i] > 300)){
+        num = num + 1
+      }
+    }
+  }
+  return(num)
+}
+
+
+#satisfy_cond_perc
