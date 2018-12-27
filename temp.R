@@ -685,6 +685,10 @@ temp = read_data_from_hana("select * from BIGBI.dim_contract_detail where mall_n
 #to unify partner with different code 
 oneness_partner = read_data_from_hana("select * from BIGBI.jxs_partner_dz")
 
+
+
+
+#=======================================================================================================
 #The following is regarding how to deal with accurate sale number
 # source('~/Rfile/R_impala.R',encoding = 'UTF-8')
 source("~/Rfile/R_hive.R",encoding = 'UTF-8')
@@ -700,8 +704,7 @@ and l1.partner_code = l2.partner_code) l3
 group by contract_code,mall_name,shop_id,shop_name,mall_city_name,house_no,booth_id,booth_desc,partner_code,partner_name"
 
 shanghai_sale_data = read_data_hive_general(shanghai_sale_data_sql)
-
-#两个问题
+#两个主要问题,两个次要问题
 # 1如何匹配那些没有对应到的销售记录(先检查,半监督)
 # 2因为有相当一部分高于,相当一部分低于,到底有什么样的规律?
 # 3区分代码不同但是实际是同一个经销商的经销商
@@ -715,6 +718,7 @@ duplicated_shanghai_sale_data_partner = shanghai_sale_data_partner[duplicated(pa
 unduplicated_shanghai_sale_data_partner = shanghai_sale_data_partner[!(duplicated(partner_name)|duplicated(partner_name,fromLast = TRUE)),]
 # duplicated_shanghai_sale_data_partner = merge(duplicated_shanghai_sale_data_partner,oneness_partner,all.x = TRUE,by.x = "partner_code",by.y = "PARTNER_CODE_OLD")
 
+#get the investigation data.
 partner_sale_census = readxl::read_xls("~/data/partner_info_1129.xls")
 partner_sale_census$partner_code = paste0("00",partner_sale_census$商户号)
 partner_sale_census$partner_name = partner_sale_census$经销商名称;
@@ -775,23 +779,19 @@ shanghai_sale_data_detail = shanghai_sale_data_detail[order(partner_code,new_ord
 #get time gap 
 shanghai_sale_data_process = shanghai_sale_data_detail[,.(time_diff = diff(as.numeric(new_order_date))),by = "partner_code"]
 #0040002006
-shanghai_sale_data_detail[,.(freq_per_day = .N),by = c("partner_code","date_id")][,.(max_freq_in_day = max(freq_per_day)),by = "partner_code"]
-shanghai_sale_data_process[,.(reg_time_perc = sum(time_diff%%86400 == 0)/.N),by = "partner_code"]
-shanghai_sale_data_process[,.(min_time_space = min(time_diff)),by = "partner_code"]
-shanghai_sale_data_process[,.(min_time_space = min(time_diff[time_diff>0])),by = "partner_code"][,.(partner_code,ifelse(min_time_space == Inf,86400,min_time_space))]
-shanghai_sale_data_process[,.(max_cont_hit = get_max_cont_hit(time_diff)),by = "partner_code"]
-shanghai_sale_data_process[,.(max_cont_hit_nozero = get_max_cont_hit(time_diff,cond = expression(v[i]<300 && v[i]!=0))),by = "partner_code"]
-shanghai_sale_data_process[,.(isolated_perc = get_num_isolated_points(time_diff)/(.N+1)),by = "partner_code"]
+shanghai_sale_data_process_freq = shanghai_sale_data_detail[,.(freq_per_day = .N),by = c("partner_code","date_id")][,.(max_freq_in_day = max(freq_per_day)),by = "partner_code"]
+shanghai_sale_data_process_time = shanghai_sale_data_process[,.(reg_time_perc = sum(time_diff%%86400 == 0)/.N,min_time_space = min(time_diff),min_time_space_nonzero = min(time_diff[time_diff>0]),max_cont_hit = get_max_cont_hit(time_diff),max_cont_hit_nozero = get_max_cont_hit(time_diff,cond = expression(v[i]<300 && v[i]!=0)),isolated_perc = get_num_isolated_points(time_diff)/(.N+1)),by = "partner_code"]
+shanghai_sale_data_process_time[,min_time_space_nonzero := ifelse(min_time_space_nonzero == Inf,86400,min_time_space_nonzero)]
 
 #percentage between big sale and small sale
 shanghai_sale_data_process_bigsaleperc = shanghai_sale_data_detail[,.(over_500_sum = sum(act_amt>500),below_500_sum = sum(act_amt<=500)),by = "partner_code"]
 shanghai_sale_data_process_bigsaleperc[,big_sale_percentage := over_500_sum/(below_500_sum + over_500_sum)]
 #percentage for ordr_type
-shanghai_sale_data_process = shanghai_sale_data_detail[,.(diff_ordr_status = unique(ordr_status)),by = "partner_code"]
+# shanghai_sale_data_process = shanghai_sale_data_detail[,.(diff_ordr_status = unique(ordr_status)),by = "partner_code"]
 #num of booth
 shanghai_sale_data_process_boothnum = shanghai_sale_data_detail[,.(num_booth = uniqueN(booth_id)),by = "partner_code"]
 #num of average num in each cust over total number
-shanghai_sale_data_detail[,.(num_in_category = .N),by = c("partner_code","cust_name")][,.(avg_in_category = sqrt(sum(num_in_category))/.N),by = "partner_code"]
+# shanghai_sale_data_detail[,.(num_in_category = .N),by = c("partner_code","cust_name")][,.(avg_in_category = sqrt(sum(num_in_category))/.N),by = "partner_code"]
 shanghai_sale_data_process_custentropy = shanghai_sale_data_detail[,.(num_in_category = .N),by = c("partner_code","cust_name")][,.(p = num_in_category/sum(num_in_category),category_num = .N),by = c("partner_code")][,.(cust_entropy = sum(-p*log(p))/category_num),by = c("partner_code","category_num")]
 
 #category of the max num in each partner_code and its percentage
@@ -816,8 +816,13 @@ shanghai_sale_data_process_statuspatterntemp = shanghai_sale_data_detail[,.(num_
 shanghai_sale_data_process_statuspattern = dcast.data.table(shanghai_sale_data_process_statuspatterntemp,partner_code~ordr_status,value.var = "V1")
 
 #combine all together
-
-
+shanghai_sale_data_process_total = merge(shanghai_sale_data_process_freq,shanghai_sale_data_process_time,all.x = TRUE,by = "partner_code")
+shanghai_sale_data_process_total = merge(shanghai_sale_data_process_total,shanghai_sale_data_process_bigsaleperc,all.x = TRUE,by = "partner_code")
+shanghai_sale_data_process_total = merge(shanghai_sale_data_process_total,shanghai_sale_data_process_boothnum,all.x = TRUE,by = "partner_code")
+shanghai_sale_data_process_total = merge(shanghai_sale_data_process_total,shanghai_sale_data_process_custentropy,all.x = TRUE,by = "partner_code")
+shanghai_sale_data_process_total = merge(shanghai_sale_data_process_total,shanghai_sale_data_process_cat3perc,all.x = TRUE,by = "partner_code")
+shanghai_sale_data_process_total = merge(shanghai_sale_data_process_total,shanghai_sale_data_process_missingpattern,all.x = TRUE,by = "partner_code")
+shanghai_sale_data_process_total = merge(shanghai_sale_data_process_total,shanghai_sale_data_process_statuspattern,all.x = TRUE,by = "partner_code")
 
 ID <- c(1,1,1,2,2,2,2,3,3)
 Value <- c(2,3,5,2,5,8,17,3,5)
