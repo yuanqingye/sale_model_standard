@@ -1,41 +1,63 @@
 # View(shanghai_sale_data_process_total)
 library(lubridate)
-main = function(model_type = "sl",predict_type = "classification"){
+library(e1071)
+library(C50)
+library(ggplot2,warn.conflicts = FALSE)
+library(dplyr,warn.conflicts = FALSE)
+library(RSSL)
+source('~/Rfile/R_hana.R', encoding = 'UTF-8')
+source("~/Rfile/R_hive.R",encoding = 'UTF-8')
+
+train_method = c("lda","svmRadial","nb","rpart","rf","gbm","C5.0")
+test_method = train_method
+
+main = function(model_type = "sl",predict_type = "real classification"){
    # prepare the original result/feature data
-   source("~/Rfile/R_hive.R",encoding = 'UTF-8')
+   # get the data in shanghai, 201701-201712
    origin_feature_data = prepare_feature_data()
    origin_result_data = prepare_merged_estimate_record_data()
    # combine them together and make the train/semi train/test set
    merged_feature_result_set = merge(origin_feature_data,origin_result_data,by = "partner_code",all.x = TRUE)
+   filter_data_set = merged_feature_result_set[!is.na(relation_record_estimate_real), ]
+   filter_data_set = filter_data_set[sum_act_amt/redstar_sale_estimated<1.5&sum_act_amt/redstar_sale_estimated>0.75,]
    origin_data_set = merged_feature_result_set
    origin_data_set = final_process_data(origin_data_set)
-   if(predict_type == "classification"){
+   if(predict_type == "real classification"){
      origin_data_set$relation_record_estimate_value = NULL
+     origin_data_set$relation_record_estimate = NULL
    }
    else{
      origin_data_set$relation_record_estimate = NULL
+     origin_data_set$relation_record_estimate_real = NULL
    }
    # deal with the missing value
    # model training
    if(model_type == "sl"){
-     data_set = origin_data_set[!is.na(relation_record_estimate),]
-     #this will remove the remain na's
-     data_set = data_set[complete.cases(data_set),]
-     # data_set$relation_record_estimate = as.factor(data_set$relation_record_estimate)
-     set.seed(666)
-     train_row_randnum = sample(nrow(data_set),0.9*nrow(data_set))
-     train_set = data_set[train_row_randnum,]
-     test_set = data_set[-train_row_randnum,]
-     dest_model = traing_supervised_model()
+     #create train set and test set
+     process_before_train(omitNa = TRUE)
+     #train with caret package
+     dest_model = train_supervised_model()
+     #train with specific package
+     spec_model = train_with_specific_model()
+     # train_with_different_model()
+     # test_with_different_model()
    }
+   #semi-supervised learning
    else if(model_type == "ssl"){
      
    }
    # get the test value and plot the test data
-   predict_test_value = predict(dest_model,test_set[,-"relation_record_estimate"],na.action = na.pass)
-}
+   predict_test_value = predict(dest_model,test_set[,-"relation_record_estimate_real"],na.action = na.pass)
+   model_accuracy = sum(predict_test_value==test_set$relation_record_estimate_real)/nrow(test_set)
+   table_accuracy = table(pred_value = predict_test_value,true_value = test_set$relation_record_estimate_real)
+   real_dataset = get_real_value_using_model()
+   # we have to deal with different cases related to the most valuable case
+   
+   }
 
-prepare_merged_estimate_record_data = function(){
+
+#get reported sale and estimated sale
+prepare_merged_estimate_record_data = function(distributor_source = "hana"){
   shanghai_sale_data_sql = "select min(date_id) as min_date_id,partner_code,partner_name,mall_name,mall_city_name,contract_code,shop_id,shop_name,house_no,booth_id,booth_desc,sum(act_amt) as sum_act_amt,count(act_amt) as freq
 from
   (select date_id,partner_name,l2.partner_code,mall_name,mall_city_name,contract_code,shop_id,shop_name,house_no,booth_id,booth_desc,act_amt from dl.fct_ordr l1,(select distinct partner_code from dl.fct_ordr where mall_city_name like '上海市' and date_id >= '2017-01-01' and date_id <= '2017-12-31' and ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0))) l2
@@ -49,16 +71,18 @@ from
   shanghai_sale_data = data.table(shanghai_sale_data)
   shanghai_sale_data_partner = shanghai_sale_data[,.(freq = sum(freq),sum_act_amt = sum(sum_act_amt),partner_name = max(partner_name)),by = c("partner_code")]
   shanghai_sale_data_partner$sum_act_amt = shanghai_sale_data_partner$sum_act_amt/10000
-  partner_sale_census = readxl::read_xls("~/data/partner_info_1129.xls")
-  partner_sale_census$partner_code = paste0("00",partner_sale_census$商户号)
-  partner_sale_census$partner_name = partner_sale_census$经销商名称;
-  partner_sale_census$contact_name = partner_sale_census$`联系人-姓名`
-  partner_sale_census_part = partner_sale_census[,c("去年红星销售摸底","去年总销售规模","partner_name","partner_code","contact_name")]
-  colnames(partner_sale_census_part)[1:2] = c("redstar_sale_estimated","general_sale_estimated")
+  if (distributor_source == "excel") {
+    partner_sale_census_part = get_distributor_data_from_excel()
+  }
+  else if(distributor_source == "excel"){
+    partner_sale_census_part = get_distributor_data_from_hana()
+  }
+  #distributor_data_excel_part = partner_sale_census_part 旧数据存入这里
   compare_sale_census = merge(shanghai_sale_data_partner,partner_sale_census_part[,c("redstar_sale_estimated","general_sale_estimated","partner_code")],by = "partner_code")
   #this way may not be proper,may be over 1.2 a better choice
   compare_sale_census[,c("relation_record_estimate"):=ifelse(redstar_sale_estimated/sum_act_amt>1,1,ifelse(redstar_sale_estimated/sum_act_amt==1,0,-1))]
   compare_sale_census[,relation_record_estimate_value := redstar_sale_estimated/sum_act_amt]
+  compare_sale_census[,relation_record_estimate_real := eval_estimate_vs_recorded(redstar_sale_estimated, sum_act_amt)]
   return(compare_sale_census)
   }
 
@@ -129,6 +153,7 @@ final_process_data = function(dataSet){
   dataSet$general_sale_estimated = NULL
   #model training can't use category var so remove cont_cat3_name
   dataSet$relation_record_estimate = as.factor(dataSet$relation_record_estimate)
+  dataSet$relation_record_estimate_real = as.factor(dataSet$relation_record_estimate_real)
   #following steps simplify the case and remove the most na part
   pickedSumDf = dataSet[,c("15","3","Y")]
   sumResult = rowSums(pickedSumDf,na.rm = TRUE)
@@ -138,35 +163,125 @@ final_process_data = function(dataSet){
   return(dataSet)
 }
 
+#process before train,depend on whether omit na in result and feature
+#upper assign to train_set and test_set
+process_before_train = function(dataSet = origin_data_set, omitNa = FALSE, modelType = "sl"){
+  if (modelType == "sl") {
+    dataSet = dataSet[!is.na(relation_record_estimate_real), ]
+  }
+  #this will remove the remain na's
+  if (omitNa) {
+    dataSet = dataSet[complete.cases(dataSet[,-c("relation_record_estimate_real","freq","sum_act_amt")]), ]
+  }
+  # data_set$relation_record_estimate = as.factor(data_set$relation_record_estimate)
+  set.seed(666)
+  trainRowRandnum = sample(nrow(dataSet),0.9*nrow(dataSet))
+  train_set <<- dataSet[trainRowRandnum,]
+  test_set <<- dataSet[-trainRowRandnum,]
+}
 
-traing_supervised_model = function(trainSet,trainingMethod = "C5.0"){
+#main method, get the model from your choice,it may use caret(fast) or not(specific package)
+train_supervised_model = function(trainSet = train_set,trainingMethod = "C5.0",Formula = relation_record_estimate_real~.){
   library(caret)
   Control = trainControl(method = "repeatedcv",number = 10,repeats = 3)
   preProcess = c("center","scale")
   Metric = "Accuracy"
-  model = train(relation_record_estimate~.,data = trainSet,method = trainingMethod,metric = Metric,trControl = Control,preProc = preProcess,na.action = na.pass)
+  model = train(Formula,data = trainSet,method = trainingMethod,metric = Metric,trControl = Control,preProc = preProcess,na.action = na.pass)
   return(model)
 }
 
+train_with_specific_model = function(trainSet = train_set,trainingMethod = "C5.0",Formula = relation_record_estimate_real~.){
+  # source('~/R_Projects/DecidingTree/Rfile/function.R')
+  if(trainingMethod == "C5.0"){
+    # model = C5.0(Formula,trainSet,na.action = na.pass)
+    model = C5.0(x = trainSet[,-19],y = trainSet$relation_record_estimate_real)
+  }
+  return(model)
+}
+
+#test method, see which method get the better result
 train_method = c("lda","svmRadial","nb","rpart","rf","gbm","C5.0")
-train_with_different_model = function(trainSet = train_set,trainMethod = train_method){
+train_with_different_model = function(trainSet = train_set,trainMethod = train_method,Formula = relation_record_estimate_real~.){
   varias_model <<- list()
   Control = trainControl(method = "repeatedcv",number = 10,repeats = 3)
   preProcess = c("center","scale")
   Metric = "Accuracy"
   for(modelName in trainMethod){
     tryCatch(
-    varias_model[[modelName]] <<- train(relation_record_estimate~.,data = trainSet,method = modelName,metric = Metric,trControl = Control,preProc = preProcess,na.action = na.pass),
+    varias_model[[modelName]] <<- train(Formula,data = trainSet,method = modelName,metric = Metric,trControl = Control,preProc = preProcess,na.action = na.pass),
     error = function(e){print(paste0("The error is related to ",modelName))})
   }
 }
 
 # test_method = c("gbm","C5.0")
-evaluation_with_different_model = function(testSet = test_set,testMethod = test_method){
+test_with_different_model = function(testSet = test_set,testMethod = test_method){
   varias_prediction <<- list()
   varias_prediction_accuracy <<- list()
+  varias_prediction_table <<- list()
+  varias_prediction_table_para <<- list()
   for(modelName in testMethod){
-    varias_prediction[[modelName]] <<- predict(varias_model[[modelName]],testSet[,-"relation_record_estimate"],na.action = na.pass)
-    varias_prediction_accuracy[[modelName]] <<- sum(varias_prediction[[modelName]]==testSet$relation_record_estimate)/nrow(testSet)
+    varias_prediction[[modelName]] <<- predict(varias_model[[modelName]],testSet[,-"relation_record_estimate_real"],na.action = na.pass)
+    varias_prediction_accuracy[[modelName]] <<- sum(varias_prediction[[modelName]]==testSet$relation_record_estimate_real)/nrow(testSet)
+    varias_prediction_table[[modelName]] <<-table(pred_value = varias_prediction[[modelName]],true_value = testSet$relation_record_estimate_real)
+    varias_prediction_table_para[[modelName]] <<- classAgreement(varias_prediction_table[[modelName]])
   }
 }
+
+test_semi_supervised_learning = function(trainSet = train_set,f = NearestMeanClassifier){
+  i = 1
+  colNames = colnames(trainSet)
+  while(i<length(colNames)-1){
+    baseFormular = as.formula(paste0("relation_record_estimate_real","~",colNames[[i]],"+",colNames[[i+1]]))
+    g_nm <- f(baseFormular,trainSet,prior=NULL)
+    g_self <- SelfLearning(baseFormular,trainSet,
+                           method=f,
+                           prior=NULL)
+    trainSet %>% 
+      ggplot(aes(x=max_freq_in_day,y=reg_time_perc,color=relation_record_estimate_real,size=relation_record_estimate_real)) +
+      geom_point() +
+      scale_size_manual(values=c("-1"=3,"1"=3), na.value=1) +
+      geom_linearclassifier("Supervised"=g_nm,"Semi-supervised"=g_self) + 
+      coord_cartesian(xlim = c(-5, 5),ylim = c(-5,5))
+    i = i + 1
+    Sys.sleep(5) 
+  }
+}
+
+#evaluate if estimate sale and recorded value between some ratio
+eval_estimate_vs_recorded = function(estimatedValue,recordedValue,defaultUpper = 1.8,defaultLower = 0.8){
+  result = estimatedValue/recordedValue<=defaultUpper&estimatedValue/recordedValue>defaultLower
+  return(as.numeric(result))
+}
+
+get_category_distribution = function(dataSet = sale_data_picked,categoryGran = 1){
+  dataCat = dataSet[,.(sale = sum(act_amt)),by = c("month_id",paste0("cont_cat",categoryGran,"_name"))]
+  dataWideCat = dcast(dataCat,month_id~cont_cat1_name,value.var = "sale")
+}
+
+#need to be edited
+prepare_filter_data = function(){
+  return(real_value_data)
+}
+
+get_distributor_data_from_hana = function(){
+  distributor_data_sql = paste0("select * from BIGBI.JXS_BCXX")
+  distributor_data = read_data_from_hana(distributor_data_sql)
+  distributor_data = data.table(distributor_data)
+  distributor_data_part = distributor_data[,c("SELL_AMOUNT_REDSTAR","SELL_AMOUNT_TOTAL",
+                                              "BUSINESS_NAME","BUSINESS_NUM","LINK_NAME")]
+  colnames(distributor_data_part) = c("redstar_sale_estimated","general_sale_estimated","partner_name","partner_code","contact_name")
+  return(distributor_data_part)
+}
+
+#not portable in linux system
+get_distributor_data_from_excel = function(){
+  partner_sale_census = readxl::read_xls("~/data/partner_info_1129.xls")
+  partner_sale_census$partner_code = paste0("00",partner_sale_census$商户号)
+  partner_sale_census$partner_name = partner_sale_census$经销商名称;
+  partner_sale_census$contact_name = partner_sale_census$`联系人-姓名`
+  partner_sale_census_part = partner_sale_census[,c("去年红星销售摸底","去年总销售规模","partner_name","partner_code","contact_name")]
+  colnames(partner_sale_census_part)[1:2] = c("redstar_sale_estimated","general_sale_estimated")
+  return(partner_sale_census_part)
+}
+
+# "redstar_sale_estimated" "general_sale_estimated" "partner_name" "partner_code" "contact_name"

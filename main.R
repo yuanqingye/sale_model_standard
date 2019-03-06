@@ -87,3 +87,11 @@ sale_perarea_by_onsale = plot_sale_perarea_by_onsale(sale_data_picked_list[["sha
 
 #find the intersection of these 2 malls
 intersected_brand = data.frame(brand_name = intersect(unique(contract_list[["shanghaizhenbei"]]$BRAND_NAME),unique(contract_list[["shanghaijinqiao"]]$BRAND_NAME)))
+
+#save importtant information for generate report
+prepared_sale_data = sale_data_picked_list[["shanghaijinqiao"]]
+prepared_sale_data_stall_sum = sale_data_stall_sum_list[["shanghaijinqiao"]]
+prepared_contract_data = contract_list[["shanghaijinqiao"]]
+save(prepared_sale_data,prepared_sale_data_stall_sum,prepared_contract_data,on_sale_data,file = 'report_var.RData')
+
+

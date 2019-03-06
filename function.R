@@ -21,6 +21,17 @@ get_sale_data_by_mall_name = function(mall_name){
   return(result)
 }
 
+#function to get sale data by mall name
+get_sale_data_by_mall_name_with_time_range = function(mall_name,time_start,time_end){
+  #old logic ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0)) is not used anymore
+  sql = paste0("select date_id,ordr_date,prod_name,mall_name,shop_id,shop_name,contract_code,house_no,booth_id,booth_desc,cnt_cat1_num,cnt_cat2_num,cnt_cat3_num,is_coupon,partner_name,cont_cat1_name,cont_cat2_name,cont_cat3_name,act_amt from dl.fct_ordr where mall_name like '%",mall_name,"%' and 
+               act_amt > 0 and ordr_status not in ('1','7','19','Z','X') and date_id between '",time_start,"' and '",time_end,"'")
+  result = read_data_hive_general(sql)
+  result$month_id = str_sub(result$ordr_date,1,7)
+  result = data.table(result)
+  return(result)
+}
+
 #using this function to get a clean on sale data list
 get_on_sale_date_and_clean = function(){
   on_sale_data_sql = "select distinct prom_begin_time,`date` from dm.dm_weixin_ticket_schedule_dt"
@@ -191,7 +202,8 @@ plot_multiple_factor = function(dataset,
                               valvar,
                               filterexpression = NULL,
                               brandlist,
-                              withoutlegend = TRUE) {
+                              withoutlegend = TRUE,
+                              catname = '实木') {
   # dataset = dataset[order(saleperarea,decreasing = TRUE),]
   setorderv(dataset, cols = c(catvar,valvar),order = c(1,-1))
   dataset[[itemvar]] <-
@@ -205,10 +217,13 @@ plot_multiple_factor = function(dataset,
     fill = eval(as.name(catvar))
   )) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
   if (withoutlegend) {
-    p + theme(legend.position = "none")
+    p + theme(legend.position = "none") + 
+        xlab("类内品牌") + 
+        ylab("单位面积销售额") + 
+        ggtitle(paste0(catname,"下品牌销售图"))
   }
   else{
-    p
+    p + xlab("类内品牌") + ylab("单位面积销售额") + ggtitle(paste0(catname,"下品牌销售图"))
   }
 }
 
@@ -278,7 +293,10 @@ plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "sale
 #using calculate_sale_perarea_by_catvar_in_period generate data and plot it
 plot_sale_perarea_by_catvar_in_period = function(sale_data_picked,contract_raw,begin_date,finish_date,catvar = "CATEGORY_2_EDIT"){
   sale_area = calculate_sale_perarea_by_catvar_in_period(sale_data_picked,contract_raw,begin_date,finish_date,catvar)
-  sp = ggplot(data = sale_area,mapping = aes(x = eval(as.name(catvar)),y = saleperarea,fill = "good")) + geom_bar(stat = "identity") + scale_fill_manual(values=c("#9999CC"))+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  sp = ggplot(data = sale_area,mapping = aes(x = reorder(eval(as.name(catvar)),-saleperarea),y = saleperarea,fill = "good")) + geom_bar(stat = "identity") + scale_fill_manual(values=c("#9999CC"))+theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+       xlab("销售大类") + 
+       ylab("单位面积销售额") + 
+       ggtitle("销售分类图")
   sp
   # sp + facet_grid(facets=. ~ month_id)
 }
@@ -305,7 +323,10 @@ plot_sale_perarea_by_weekend = function(sale_data_picked,contract_raw,catvar,beg
   #old name sale_data_cat2_week_saleperarea_sum
   sale_perarea_by_weekend = calculate_sale_perarea_by_catvar_in_period(sale_data_picked,contract_raw,begin_date,finish_date,c(catvar,"ifweekend"))
   sale_perarea_by_weekend[,saleperarea_mirror := ifelse(ifweekend == "weekend",saleperarea,-saleperarea)]
-  p = ggplot(sale_perarea_by_weekend, aes(x=reorder(eval(parse(text = catvar)),-saleperarea,min), y=saleperarea_mirror, fill=ifweekend)) + geom_bar(stat="identity", position="identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  p = ggplot(sale_perarea_by_weekend, aes(x=reorder(eval(parse(text = catvar)),-saleperarea,min), y=saleperarea_mirror, fill=ifweekend)) + geom_bar(stat="identity", position="identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+      xlab("销售分类") +
+      ylab("单位面积销售额") +
+      ggtitle("各品类销售周末/非周末情况对比图")
   print(p)
   #calculate weekday/weekend ratio for further using
   sale_perarea_by_weekend_dcast = dcast(sale_perarea_by_weekend,CATEGORY_2_EDIT~ifweekend,value.var = "saleperarea")
@@ -318,7 +339,10 @@ plot_sale_perarea_by_season = function(sale_data_picked,contract_raw,catvar,year
   sale_data_picked[,season := quarters(as.Date(date_id,'%Y-%m-%d'))]
   #old var:sale_data_cat2_season_saleperarea_sum
   sale_perarea_by_season = calculate_seasonal_sale_perarea_by_catvar(sale_data_picked,contract_raw,year,catvar,catvar)
-  p = ggplot(data = sale_perarea_by_season,aes(x = eval(parse(text = catvar)),y = saleperarea,group = quarter)) + geom_bar(stat = "identity", position = "dodge", aes(fill = quarter)) + theme(axis.text.x = element_text(angle = 90,hjust = 1))
+  p = ggplot(data = sale_perarea_by_season,aes(reorder(x = eval(parse(text = catvar)),-saleperarea,sum),y = saleperarea,group = quarter)) + geom_bar(stat = "identity", position = "dodge", aes(fill = quarter)) + theme(axis.text.x = element_text(angle = 90,hjust = 1)) +
+      xlab("销售分类") +
+      ylab("按季节单位面积销售额") +
+      ggtitle("各品类销售按季节对比图")
   print(p)
 # sale_perarea_by_season_dcast = dcast(sale_perarea_by_season,eval(parse(text = catvar))~season,value.var = "saleperarea")
 # sale_perarea_by_season_dcast = sale_perarea_by_season_dcast[,year]
@@ -327,9 +351,12 @@ plot_sale_perarea_by_season = function(sale_data_picked,contract_raw,catvar,year
 
 plot_sale_perarea_by_onsale = function(sale_data_picked,on_sale_data,contract_raw,catvar,year = '2017',groupvar = "onsale"){
   sale_data_picked_for_spec_year = sale_data_picked[month_id>=paste0(year,'-01') & month_id<=paste0(year,'-12'),]
-  sale_data_picked_for_spec_year$onsale = sapply(sale_data_picked_for_spec_year$date_id,function(dot_date,start_dates,end_dates){any(between(dot_date,start_dates,end_dates))},on_sale_data$prom_begin_time,on_sale_data$date)
+  sale_data_picked_for_spec_year$onsale = sapply(sale_data_picked_for_spec_year$date_id,function(dot_date,start_dates,end_dates){any(data.table::between(dot_date,start_dates,end_dates))},on_sale_data$prom_begin_time,on_sale_data$date)
   sale_perarea_by_cat2_for_spec_year = calculate_yearly_sale_perarea_by_catvar(sale_data_picked_for_spec_year,contract_raw,year,catvar,catvar,groupvar)
-  p = ggplot(data = sale_perarea_by_cat2_for_spec_year,aes(x = reorder(eval(parse(text = catvar)),-sale_perarea_year,min),y = sale_perarea_year,group = onsale)) + geom_bar(stat = "identity", position = "dodge", aes(fill = onsale)) + theme(axis.text.x = element_text(angle = 90,hjust = 1))
+  p = ggplot(data = sale_perarea_by_cat2_for_spec_year,aes(x = reorder(eval(parse(text = catvar)),-sale_perarea_year,min),y = sale_perarea_year,group = onsale)) + geom_bar(stat = "identity", position = "dodge", aes(fill = onsale)) + theme(axis.text.x = element_text(angle = 90,hjust = 1)) +
+      xlab("销售分类") +
+      ylab("按促销状态单位面积销售额") +
+      ggtitle("各品类销售按是否促销对比图")
   print(p)
   sale_perarea_by_cat2_for_spec_year_dcast = dcast(sale_perarea_by_cat2_for_spec_year,eval(parse(text = catvar))~onsale,value.var = "sale_perarea_year")
   sale_perarea_by_cat2_for_spec_year_dcast[,onsale_index := `TRUE`/`FALSE`]
@@ -454,5 +481,43 @@ get_num_isolated_points = function(v){
   return(num)
 }
 
-
 #satisfy_cond_perc
+
+# filter_data_set = merged_feature_result_set[!is.na(relation_record_estimate_real), ]
+# filter_data_set = filter_data_set[sum_act_amt/redstar_sale_estimated<1.5&sum_act_amt/redstar_sale_estimated>0.75,]
+# filter_data_set is the data with respect to detailer's sale data
+get_real_value_using_data = function(baseData,filterData = filter_data_set){
+  #we need to get only 2017 data from original data set
+  baseData = baseData[date_id>='2017-01-01'&date_id<='2017-12-31',]
+  resultData = merge(baseData,filterData[,"partner_name"],by = "partner_name")
+}
+
+check_if_in_period = function(dot_date,start_dates,end_dates){
+  any(between(dot_date,start_dates,end_dates))
+}
+
+generate_sale_perarea_by_catvar_in_period = function(sale_data_picked,contract_raw,begin_date,finish_date,catvar = "CATEGORY_2_EDIT",join_var = "CATEGORY_2_EDIT"){
+  #this step is the most fragile because the time span for 
+  time_contract = contract_raw[BEGIN_DATE<=begin_date & FINISH_DATE>=finish_date,]
+  area = time_contract[,.(area = sum(ACTUAL_AREA)),by = join_var]
+  sale = sale_data_picked[month_id >= str_sub(begin_date,1,7) & month_id <= str_sub(finish_date,1,7),.(sale = sum(act_amt)),by = catvar]
+  #join sale data and contract data togather
+  sale_area = merge(sale,area,by = join_var,all.x = TRUE)
+  sale_area = sale_area[,saleperarea := sale/area]
+  sale_area = sale_area[order(saleperarea,decreasing = TRUE),]
+  sale_area$id = 1:nrow(sale_area)
+  #if you don't ggplot on this dim,your plot won't order this way
+  sale_area$id = factor(sale_area$id,levels = sale_area$id)
+  return(sale_area)
+  }
+
+function(){
+  #品牌系数
+  sale_perarea_by_brand = sale_data_picked_list[["shanghaijinqiao"]][,.(saleperarea = sum(avg_amt),sale = sum(act_amt),record_num = .N),by = c("CATEGORY_2_EDIT","SERIES_NAME")]
+  sale_perarea_by_brand[,saleperarea_median := median(saleperarea,na.rm = TRUE),by = "CATEGORY_2_EDIT"]
+  sale_perarea_by_brand[,brand_index := saleperarea/saleperarea_median]
+  #plot CATEGORY on the same panel
+  cat_list = enc2utf8(c("实木","卫浴","瓷砖"))
+  cat_list = unique(sale_perarea_by_brand$CATEGORY_2_EDIT)[1:3]
+  plot_multiple_factor(data = sale_perarea_by_brand[CATEGORY_2_EDIT %in% cat_list,],"CATEGORY_2_EDIT","SERIES_NAME","saleperarea")
+}

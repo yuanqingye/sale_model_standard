@@ -829,3 +829,57 @@ Value <- c(2,3,5,2,5,8,17,3,5)
 Event <- c(1,1,2,1,2,1,2,2,2)
 
 group <- data.table(Subject=ID, pt=Value, Event=Event)
+
+library(dplyr,warn.conflicts = FALSE)
+library(ggplot2,warn.conflicts = FALSE)
+library(RSSL)
+
+# Train classifier
+View(train_set)
+train_set = train_set[,-c("freq","sum_act_amt")]
+train_set_copy = train_set
+colmax = sapply(train_set[,-"relation_record_estimate_real"],max)
+colmin = sapply(train_set[,-"relation_record_estimate_real"],min)
+train_set_feature = scale(train_set[,-"relation_record_estimate_real"],center = colmin,scale = colmax-colmin)
+train_set_feature = as.data.frame(train_set_feature)
+train_set = cbind(train_set_feature,relation_record_estimate_real = train_set_copy$relation_record_estimate_real)
+g_nm <- NearestMeanClassifier(relation_record_estimate_real~min_time_space+min_time_space_nonzero,train_set,prior=NULL)
+g_self <- SelfLearning(relation_record_estimate_real~min_time_space+min_time_space_nonzero,train_set,
+                       method=NearestMeanClassifier,
+                       prior=NULL)
+
+g_nm <- TSVM(relation_record_estimate_real~.,train_set,C = 1,Cstar = 0.2)
+g_self <- SelfLearning(relation_record_estimate_real~.,train_set,
+                       method=TSVM,C = 1,Cstar = 0.2)
+
+# Plot dataset
+train_set %>% 
+  ggplot(aes(x=missing_house_no,y=missing_cont_unit_price,color=relation_record_estimate_real,size=relation_record_estimate_real)) +
+  geom_point() +
+  coord_equal() +
+  scale_size_manual(values=c("-1"=3,"1"=3), na.value=1) + geom_linearclassifier("Semi-supervised"=g_self)
+
+  geom_linearclassifier("Supervised"=g_nm,
+                        "Semi-supervised"=g_self)
+  
+train_set %>% 
+    ggplot(aes(x=min_time_space,y=min_time_space_nonzero,color=relation_record_estimate_real,size=relation_record_estimate_real)) +
+    geom_point() +
+    scale_size_manual(values=c("-1"=3,"1"=3), na.value=1) +
+    geom_linearclassifier("Supervised"=g_nm,"Semi-supervised"=g_self) + 
+    coord_cartesian(xlim = c(-5, 5),ylim = c(-5,5))
+
+#min_time_space,min_time_space_nonzero 非常关键的在y = x附近扼制住了
+
+mean(loss(g_nm,train_set),na.rm = TRUE)
+mean(loss(g_self,train_set),na.rm = TRUE)
+
+
+mean(predict(g_nm,train_set)!=train_set$relation_record_estimate_real,na.rm = TRUE)
+mean(predict(g_self,train_set)!=train_set$relation_record_estimate_real,na.rm = TRUE)
+
+source('~/Rfile/R_hana.R', encoding = 'UTF-8')
+
+source('~/Rfile/R_impala.R',encoding = 'UTF-8')
+people_move_data_sql = "select * from ods.ods_wisdowmall_store_track_dt"
+people_move_data = read_data_impala_general(people_move_data_sql)
