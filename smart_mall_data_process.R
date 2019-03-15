@@ -55,7 +55,7 @@ for(dt in as.character(20190126:20190131))
   jgc()
 }
 
-for(dt in as.character(20190201:20190209))
+for(dt in as.character(20190220:20190228))
 {
   smart_mall_track_data_sql = paste0("select * from ods.ods_wisdowmall_store_track_dt where dt = '",dt,"'")
   smart_mall_list[[dt]] = read_data_impala_general(smart_mall_track_data_sql)
@@ -63,19 +63,18 @@ for(dt in as.character(20190201:20190209))
   jgc()
 }
 
+# missing 0216 smart_mall_list 
+
 View(smart_mall_track_data_list[["20190210"]])
 
 smart_mall_list = list()
-for(dt in as.character('20190210':'20190219')){
+for(dt in as.character('20190210':'20190220')){
   smart_mall_list[[dt]] = smart_mall_track_data_list[[dt]]
 }
 
 for(dt in 20190201:20190209){
   smart_mall_list[[as.character(dt)]] = smart_mall_track_data_list[[dt]]
 }
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190220'"
-smart_mall_list[["20190220"]] = read_data_impala_general(smart_mall_track_data_sql)
 
 smart_mall_tracking_record = rbindlist(smart_mall_list)
 smart_mall_tracking_record$store_id = as.character(smart_mall_tracking_record$store_id)
@@ -124,6 +123,9 @@ ggplot(mix_uv_sale_melt[["February"]][variable %in% c("uv","sale_sum"),],aes(x =
 ggplot(mix_uv_sale_melt[["February"]][variable %in% c("pv","sale_sum"),],aes(x = store_name,y = value,fill = variable,group = variable)) + geom_bar(stat = "identity",position = "dodge")+theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 mix_uv_sale_normalization[["February"]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum"):= .((uv+0.1)/(sale_count+0.1),(pv+0.1)/(sale_count+0.1),(uv+0.1)/(sale_sum+0.1),(pv+0.1)/(sale_sum+0.1))]
+mix_uv_sale_normalization[["January"]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum"):= .((uv+0.1)/(sale_count+0.1),(pv+0.1)/(sale_count+0.1),(uv+0.1)/(sale_sum+0.1),(pv+0.1)/(sale_sum+0.1))]
+
+
 
 quantile(mix_uv_sale_normalization[["February"]]$uv_over_sale_count, c(.25,.75))
 quantile(mix_uv_sale_normalization[["February"]]$pv_over_sale_count, c(.25,.75))
@@ -135,6 +137,7 @@ boxplot(mix_uv_sale_normalization[["February"]]$pv_over_sale_count)
 boxplot(mix_uv_sale_normalization[["February"]]$uv_over_sale_sum)
 boxplot(mix_uv_sale_normalization[["February"]]$pv_over_sale_sum)
 
+
 library(dbscan)
 kNNdist(mix_uv_sale_normalization[["February"]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")],k = 5)
 kNNdistplot(mix_uv_sale_normalization[["February"]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")], k = 5)
@@ -144,6 +147,7 @@ dbscan_clust = dbscan(mix_uv_sale_normalization[["February"]][,c("uv_over_sale_c
 mix_uv_sale_normalization[["February"]]$dbscan_prop = dbscan_clust$cluster
 #in this method we got cluster number 2 and the cluster result
 
+#1.mclust way
 library(mclust)
 m_clust <- Mclust(as.matrix(mix_uv_sale_normalization[["February"]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")]), G=1:20) #聚类数目从1一直试到20
 summary(m_clust)
@@ -170,6 +174,7 @@ wssplot <- function(data, nc=15, seed=1234){
 wssplot(mix_uv_sale_normalization[["February"]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
 #best cluster 2
 
+#3.another kmeans
 library(factoextra)
 library(ggplot2)
 set.seed(1234)
