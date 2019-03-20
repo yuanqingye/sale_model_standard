@@ -521,3 +521,4 @@ function(){
   cat_list = unique(sale_perarea_by_brand$CATEGORY_2_EDIT)[1:3]
   plot_multiple_factor(data = sale_perarea_by_brand[CATEGORY_2_EDIT %in% cat_list,],"CATEGORY_2_EDIT","SERIES_NAME","saleperarea")
 }
+
