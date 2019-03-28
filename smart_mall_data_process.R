@@ -99,14 +99,46 @@ process_uv_pv_data()
 generate_data_for_cluster()
 #clustering,plot and filling mix_uv_sale_normalization[[period]] for comparison
 dbscan_cluster = cluster_test(type = "dbscan")
-#mclust_semi_cluster = cluster_test(type = "EM_gaussian_semiauto")
+mclust_semi_cluster = cluster_test(type = "EM_gaussian_semiauto")
 mclust_manu_cluster = cluster_test(type = "EM_gaussian_manu")
 kmeans_cluster = cluster_test(type = "kmeans")
-sse_cluster = cluster_test(type = "SSE")
+kmeans_sse_cluster = cluster_test(type = "kmeans_SSE")
 kmedoids_cluster = cluster_test(type = "K_Medoids")
 calinsky_cluster = cluster_test(type = "Calinsky")
 ap_cluster = cluster_test(type = "AP")
-gap_cluster = cluster_test(type = "GAP")
+#Has only one cluster:
+# gap_cluster = cluster_test(type = "GAP")
+
+#remove identical column for this specific case(In other case may not be true)
+mix_uv_sale_normalization[[period]]$sse_kmeans_prop = NULL
+
+#plot to check different clusters:
+library(factoextra)
+library(ggplot2)
+fviz_cluster(kmeans_sse_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
+fviz_cluster(dbscan_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
+fviz_cluster(mclust_manu_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
+fviz_cluster(mclust_semi_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
+fviz_cluster(kmedoids_cluster$pamobject, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
+library(cluster)
+clusplot(kmedoids_cluster$pamobject)
+calinsky_formal_cluster = list(data = mclust_manu_cluster$data,clustering = calinsky_cluster$partition[,4])
+fviz_cluster(calinsky_formal_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
+#Once a list has a clustering part and a data part, it can be ploted by fviz_cluster
+#here pick calinsky for it shows clear clustering boundary
+
+#ap_cluster's cluster has different structure, need to be processed before plot
+ap_cluster_reunited = reorg_ap_cluster(ap_cluster)
+ap_formal_cluster = list(data = mclust_manu_cluster$data,clustering = ap_cluster_reunited)
+fviz_cluster(ap_formal_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
+clusplot(ap_formal_cluster)
+
+View(mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum","dbscan_prop","nb_kmeans_prop","kmedoids_prop","calinsky_prop","mclust_semi_prop")])
+#switch the value since the cluster is grouped by distinct(contra) number than others
+mix_uv_sale_normalization[[period]]$kmedoids_prop[mix_uv_sale_normalization[[period]]$kmedoids_prop == 1] = 3
+mix_uv_sale_normalization[[period]]$kmedoids_prop[mix_uv_sale_normalization[[period]]$kmedoids_prop == 2] = 1
+mix_uv_sale_normalization[[period]]$kmedoids_prop[mix_uv_sale_normalization[[period]]$kmedoids_prop == 3] = 2
+
 
 #plot the relationship between sale and track
 mix_uv_sale_melt = list()
