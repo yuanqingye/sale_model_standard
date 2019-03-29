@@ -1,52 +1,12 @@
 # smart_mall_track_data_list = list()
 source("~/Rfile/R_hive.R") ##!!need to include that file
 source('~/Rfile/R_impala.R',encoding = 'UTF-8')
+needed_col = c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum","calinsky_prop")
+
 smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190219' limit 60000"
 smart_mall_track_data_list[["20190219"]] = read_data_impala_general(smart_mall_track_data_sql)
 
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190218' limit 60000"
-smart_mall_track_data_list[["20190218"]] = read_data_impala_general(smart_mall_track_data_sql)
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190215'"
-smart_mall_track_data_list[["20190215"]] = read_data_impala_general(smart_mall_track_data_sql)
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190213'"
-smart_mall_track_data_list[["20190213"]] = read_data_impala_general(smart_mall_track_data_sql)
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190212'"
-smart_mall_track_data_list[["20190212"]] = read_data_impala_general(smart_mall_track_data_sql)
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190211'"
-smart_mall_track_data_list[["20190211"]] = read_data_impala_general(smart_mall_track_data_sql)
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190210'"
-smart_mall_track_data_list[["20190210"]] = read_data_impala_general(smart_mall_track_data_sql)
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190214'"
-smart_mall_track_data_list[["20190214"]] = read_data_impala_general(smart_mall_track_data_sql)
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190216'"
-smart_mall_track_data_list[["20190216"]] = read_data_impala_general(smart_mall_track_data_sql)
-
-smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190217'"
-smart_mall_track_data_list[["20190217"]] = read_data_impala_general(smart_mall_track_data_sql)
-
 file.create("./smart_mall_track_data_list_second.RData")
-for(dt in as.character(20190201:20190209))
-{
-  smart_mall_track_data_sql = paste0("select * from ods.ods_wisdowmall_store_track_dt where dt = '",dt,"'")
-  smart_mall_track_data_list[[dt]] = read_data_impala_general(smart_mall_track_data_sql)
-  save(smart_mall_track_data_list,file = "./smart_mall_track_data_list_second.RData")
-}
-
-#options(java.parameters = "-Xmx1024m")
-source('~/Rfile/R_impala.R',encoding = 'UTF-8')
-jgc <- function()
-{
-  gc()
-  .jcall("java/lang/System", method = "gc")
-}
-
 for(dt in as.character(20190126:20190131))
 {
   smart_mall_track_data_sql = paste0("select * from ods.ods_wisdowmall_store_track_dt where dt = '",dt,"'")
@@ -63,36 +23,19 @@ for(dt in as.character(20190220:20190228))
   jgc()
 }
 
-# missing 0216 smart_mall_list 
+#smart_mall_track_data stores value for January,Febuary
+smart_mall_track_data[["Febuary"]]
 
-View(smart_mall_track_data_list[["20190210"]])
-
-smart_mall_list = list()
-for(dt in as.character('20190210':'20190220')){
-  smart_mall_list[[dt]] = smart_mall_track_data_list[[dt]]
-}
-
-for(dt in 20190201:20190209){
-  smart_mall_list[[as.character(dt)]] = smart_mall_track_data_list[[dt]]
-}
-
-smart_mall_tracking_record = rbindlist(smart_mall_list)
-smart_mall_tracking_record$store_id = as.character(smart_mall_tracking_record$store_id)
-# temp = data.matrix(smart_mall_tracking_record)
-smart_mall_tracking_uv = smart_mall_tracking_record[event_type == 0,.(uv = uniqueN(pid)),by = c("store_id")]
-sum(is.na(smart_mall_tracking_record$store_id))
-
+#check who are those duplicated store name under the same store id
+#This step is logically complicated so need to be improved
 store_name_count = smart_mall_tracking_record[,.(diff_store = uniqueN(store_name)),by = c("store_id")]
 duplicated_name_list = smart_mall_tracking_record[store_id %in% store_name_count[diff_store>1,]$store_id,c("store_id","store_name")][!duplicated(store_name),]
-#check who are those duplicated store name under the same store id
 
 store_id_count = smart_mall_tracking_record[,.(diff_id = uniqueN(store_id)),by = c("store_name")]
 duplicated_id_list = smart_mall_tracking_record[store_name %in% store_id_count[diff_id>1,]$store_name,c("store_id","store_name")][!duplicated(store_id),]
 
-smart_mall_tracking_summary_by_store = list()
-smart_mall_tracking_summary_by_store[["February"]] = smart_mall_tracking_record[event_type == 0,.(uv = uniqueN(pid),pv = .N),by = c("store_id","store_name")]
-
 #store sale etc. from here you can get all the data needed including sale/tracking
+#smart_mall_track_data stores value for January
 period = "January"
 get_sale_data()
 process_uv_pv_data()
@@ -111,6 +54,15 @@ ap_cluster = cluster_test(type = "AP")
 
 #remove identical column for this specific case(In other case may not be true)
 mix_uv_sale_normalization[[period]]$sse_kmeans_prop = NULL
+
+
+#store sale etc. from here you can get all the data needed including sale/tracking
+#smart_mall_list stores value listed regarding Febuary
+period = "Febuary"
+get_sale_data("Febuary","2019-02-01","2019-02-28")
+process_uv_pv_data(data = smart_mall_track_data[["Febuary"]],period = "Febuary")
+generate_data_for_cluster(period)
+
 
 #plot to check different clusters:
 library(factoextra)
@@ -161,4 +113,24 @@ boxplot(mix_uv_sale_normalization[["February"]]$uv_over_sale_sum)
 boxplot(mix_uv_sale_normalization[["February"]]$pv_over_sale_sum)
 
 
+source("~/R_projects/ensemble_method/Rfile/Go_around_model_fun.R")
+temp = go_around_model(temp_data_set,"calinsky_prop~.")
+metric <- "Accuracy"
+preProcess=c("center", "scale")
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+temp_data_set = mix_uv_sale_normalization[["January"]][,needed_col,with = FALSE]
+temp_data_set$calinsky_prop = as.character(temp_data_set$calinsky_prop)
+test_formula = as.formula("calinsky_prop~.")
 
+#Using Caret package to 
+library(abnormTestOnlineFunc)
+train_test_smscluster = model_preprocess_smscluster(mix_uv_sale_normalization[["January"]],0.2)
+train_set_smscluster = train_test_smscluster[[1]]
+test_set_smscluster = train_test_smscluster[[2]]
+train_set_smscluster$calinsky_prop = as.character(train_set_smscluster$calinsky_prop)
+test_set_smscluster$calinsky_prop = as.character(test_set_smscluster$calinsky_prop)
+model_df_smscluster = data.frame(model_name = c("lda","rpart","C5.0","treebag","rf","gbm","svmRadial","knn"))
+trial_result_smscluster = go_around_model_with_test_simple_version(train_set_smscluster,test_set_smscluster,"calinsky_prop",model_df_smscluster,calAR)
+summary(trial_result_smscluster[[1]])
+bwplot(trial_result_smscluster[[1]])
+densityplot(trial_result_smscluster[[1]], metric = "Accuracy")
