@@ -62,11 +62,19 @@ period = "Febuary"
 get_sale_data("Febuary","2019-02-01","2019-02-28")
 process_uv_pv_data(data = smart_mall_track_data[["Febuary"]],period = "Febuary")
 generate_data_for_cluster(period)
-
+dbscan_cluster = cluster_test(period,type = "dbscan")
+mclust_semi_cluster = cluster_test(period,type = "EM_gaussian_semiauto")
+mclust_manu_cluster = cluster_test(period,type = "EM_gaussian_manu")
+kmeans_cluster = cluster_test(period,type = "kmeans")
+kmeans_sse_cluster = cluster_test(period,type = "kmeans_SSE")
+kmedoids_cluster = cluster_test(period,type = "K_Medoids")
+calinsky_cluster = cluster_test(period,type = "Calinsky")
+ap_cluster = cluster_test(period,type = "AP")
 
 #plot to check different clusters:
 library(factoextra)
 library(ggplot2)
+
 fviz_cluster(kmeans_sse_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
 fviz_cluster(dbscan_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
 fviz_cluster(mclust_manu_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
@@ -124,7 +132,7 @@ test_formula = as.formula("calinsky_prop~.")
 
 #Using Caret package to 
 library(abnormTestOnlineFunc)
-train_test_smscluster = model_preprocess_smscluster(mix_uv_sale_normalization[["January"]],0.2)
+train_test_smscluster = model_preprocess_smscluster(mix_uv_sale_normalization[[period]],0.2)
 train_set_smscluster = train_test_smscluster[[1]]
 test_set_smscluster = train_test_smscluster[[2]]
 train_set_smscluster$calinsky_prop = as.character(train_set_smscluster$calinsky_prop)
