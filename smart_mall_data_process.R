@@ -1,6 +1,7 @@
 # smart_mall_track_data_list = list()
 source("~/Rfile/R_hive.R") ##!!need to include that file
 source('~/Rfile/R_impala.R',encoding = 'UTF-8')
+source('~/R_Projects/sale_model_standard/R_scripts_functions/supportingfunctions.R', encoding = 'UTF-8')
 needed_col = c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum","calinsky_prop")
 
 smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190219' limit 60000"
@@ -15,7 +16,7 @@ for(dt in as.character(20190126:20190131))
   jgc()
 }
 
-for(dt in as.character(20190220:20190228))
+for(dt in as.character(20190301:20190331))
 {
   smart_mall_track_data_sql = paste0("select * from ods.ods_wisdowmall_store_track_dt where dt = '",dt,"'")
   smart_mall_list[[dt]] = read_data_impala_general(smart_mall_track_data_sql)
@@ -23,7 +24,7 @@ for(dt in as.character(20190220:20190228))
   jgc()
 }
 
-#smart_mall_track_data stores value for January,Febuary
+#smart_mall_track_data stores value for January,Febuary,March
 smart_mall_track_data[["Febuary"]]
 
 #check who are those duplicated store name under the same store id
@@ -38,13 +39,14 @@ duplicated_id_list = smart_mall_tracking_record[store_name %in% store_id_count[d
 #smart_mall_track_data stores value for January
 period = "January"
 get_sale_data()
-process_uv_pv_data()
+process_uv_pv_data(smart_mall_track_data[[period]])
 generate_data_for_cluster()
 #clustering,plot and filling mix_uv_sale_normalization[[period]] for comparison
 dbscan_cluster = cluster_test(type = "dbscan")
 mclust_semi_cluster = cluster_test(type = "EM_gaussian_semiauto")
 mclust_manu_cluster = cluster_test(type = "EM_gaussian_manu")
-kmeans_cluster = cluster_test(type = "kmeans")
+# too big data set
+# kmeans_cluster = cluster_test(type = "kmeans")
 kmeans_sse_cluster = cluster_test(type = "kmeans_SSE")
 kmedoids_cluster = cluster_test(type = "K_Medoids")
 calinsky_cluster = cluster_test(type = "Calinsky")
@@ -53,7 +55,7 @@ ap_cluster = cluster_test(type = "AP")
 # gap_cluster = cluster_test(type = "GAP")
 
 #remove identical column for this specific case(In other case may not be true)
-mix_uv_sale_normalization[[period]]$sse_kmeans_prop = NULL
+#mix_uv_sale_normalization[[period]]$sse_kmeans_prop = NULL
 
 
 #store sale etc. from here you can get all the data needed including sale/tracking
@@ -65,11 +67,13 @@ generate_data_for_cluster(period)
 dbscan_cluster = cluster_test(period,type = "dbscan")
 mclust_semi_cluster = cluster_test(period,type = "EM_gaussian_semiauto")
 mclust_manu_cluster = cluster_test(period,type = "EM_gaussian_manu")
-kmeans_cluster = cluster_test(period,type = "kmeans")
+# kmeans_cluster = cluster_test(period,type = "kmeans")
 kmeans_sse_cluster = cluster_test(period,type = "kmeans_SSE")
 kmedoids_cluster = cluster_test(period,type = "K_Medoids")
 calinsky_cluster = cluster_test(period,type = "Calinsky")
 ap_cluster = cluster_test(period,type = "AP")
+
+mix_uv_sale_normalization[[period]]$calinsky_prop = calinsky_cluster$partition[,4]
 
 #plot to check different clusters:
 library(factoextra)
@@ -88,6 +92,7 @@ fviz_cluster(calinsky_formal_cluster, data = mix_uv_sale_normalization[[period]]
 #here pick calinsky for it shows clear clustering boundary
 
 #ap_cluster's cluster has different structure, need to be processed before plot
+ap_cluster = apcluster(negDistMat(r=2), mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")],q = 0.05)
 ap_cluster_reunited = reorg_ap_cluster(ap_cluster)
 ap_formal_cluster = list(data = mclust_manu_cluster$data,clustering = ap_cluster_reunited)
 fviz_cluster(ap_formal_cluster, data = mix_uv_sale_normalization[[period]][,c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum")])
@@ -102,7 +107,7 @@ mix_uv_sale_normalization[[period]]$kmedoids_prop[mix_uv_sale_normalization[[per
 
 #plot the relationship between sale and track
 mix_uv_sale_melt = list()
-mix_uv_sale_melt[["February"]] = melt.data.table(mix_uv_sale_normalization[["February"]],id.vars = c("store_id","store_name"))
+mix_uv_sale_melt[["February"]] = melt.data.table(mix_uv_sale_normalization[["Febuary"]],id.vars = c("store_id","store_name"))
 ggplot(mix_uv_sale_melt[["February"]],aes(x = store_name,y = value,fill = variable,group = variable)) + geom_bar(stat = "identity",position = "dodge")+theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ggplot(mix_uv_sale_melt[["February"]][variable %in% c("uv","sale_count"),],aes(x = store_name,y = value,fill = variable,group = variable)) + geom_bar(stat = "identity",position = "dodge")+theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ggplot(mix_uv_sale_melt[["February"]][variable %in% c("pv","sale_count"),],aes(x = store_name,y = value,fill = variable,group = variable)) + geom_bar(stat = "identity",position = "dodge")+theme(axis.text.x = element_text(angle = 90, hjust = 1))
@@ -142,3 +147,27 @@ trial_result_smscluster = go_around_model_with_test_simple_version(train_set_sms
 summary(trial_result_smscluster[[1]])
 bwplot(trial_result_smscluster[[1]])
 densityplot(trial_result_smscluster[[1]], metric = "Accuracy")
+
+#cross validation
+library(abnormTestOnlineFunc)
+test_ratio = 0.2
+source('~/R_Projects/Statistics/Rfile/sample_function.R')
+train_test_smscluster = model_preprocess_smscluster_multipart(mix_uv_sale_normalization[[period]],test_ratio)
+# "uv","pv","sale_sum","sale_count","uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum","calinsky_prop"
+train_set_smscluster = train_test_smscluster[[1]]
+test_set_smscluster = train_test_smscluster[[2]]
+# random_number = train_test_smscluster[[3]]
+# test_random_number = random_number[(floor(length(random_number)*(1-test_ratio))+1):length(random_number)]
+test_random_number = train_test_smscluster[[2]][["index"]]
+#need get from mix_uv_sale_normalization else no store_id
+test_set_smscluster_mix = merge(mix_uv_sale_normalization[[period]][test_random_number,c("store_id","calinsky_prop")],mix_uv_sale_normalization[["Febuary"]],all.x = TRUE,by = "store_id")
+test_set_smscluster_mix = test_set_smscluster_mix[!is.na(store_name),]
+train_set_smscluster$calinsky_prop = as.character(train_set_smscluster$calinsky_prop)
+test_set_smscluster_mix$calinsky_prop = as.character(test_set_smscluster_mix$calinsky_prop)
+test_set_smscluster_mix = test_set_smscluster_mix[,c("uv","pv","sale_sum","sale_count","uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_over_sale_sum","calinsky_prop")]
+model_df_smscluster = data.frame(model_name = c("lda","rpart","C5.0","treebag","rf","gbm","svmRadial","knn"))
+trial_result_smscluster = go_around_model_with_test_simple_version(train_set_smscluster,test_set_smscluster_mix,"calinsky_prop",model_df_smscluster,calAR,"accuracy")
+summary(trial_result_smscluster[[1]])
+bwplot(trial_result_smscluster[[1]])
+densityplot(trial_result_smscluster[[1]], metric = "Accuracy")
+result = trial_result_smscluster[[2]]

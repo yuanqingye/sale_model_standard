@@ -203,7 +203,7 @@ plot_multiple_factor = function(dataset,
                               filterexpression = NULL,
                               brandlist,
                               withoutlegend = TRUE,
-                              catname = '实木') {
+                              catname = "") {
   # dataset = dataset[order(saleperarea,decreasing = TRUE),]
   setorderv(dataset, cols = c(catvar,valvar),order = c(1,-1))
   dataset[[itemvar]] <-
@@ -286,6 +286,41 @@ plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "sale
   f_grade_m_melt = melt(f_grade_m,id.vars = "rownum")
   f_grade_m_melt$value = ifelse((f_grade_m_melt$value == "0"),"",f_grade_m_melt$value)
   p <- ggplot(f_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = value),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f_cat_m_melt$value),angle = 45)+geom_text(aes(label = f_grade_m_melt$value),color = "red")
+  p
+}
+
+plot_floor_heat_uv = function(f_str_m,label_name = "SHOP_NAME",value_name = "saleperareainterval",filter_col = "BOOTH_CODE",filter_col2 = "BOOTH_CODE",data = month_daily_uv_with_contract_code,data2 = sale_data_stall_sum_list[["shanghaijinqiao"]],mix_order = TRUE){
+  f_value_m = apply(f_str_m,c(1,2),function(m){return(data[eval(as.name(filter_col)) == m,.SD[1,],by = filter_col][[value_name]])})
+  f_value_m[is.na(!(f_value_m > 0))] = 0
+  f_value_m = as.data.frame(f_value_m)
+  f_value_m[] = sapply(f_value_m,unlist)
+  f_value_m$rownum = 1:nrow(f_value_m)
+  f_value_m$rownum = -f_value_m$rownum
+  f_value_m_melt = melt(f_value_m,id.vars = "rownum")
+  f_cat_list = list()
+  f_cat_str = matrix(list(character(0)),nrow = nrow(f_str_m),ncol = ncol(f_str_m))
+  data2$saleperareaperduration = round(data2$saleperareaperduration,3)
+  for(name in label_name){
+    if (!mix_order) {
+      f_cat_list[[name]] = apply(f_str_m, c(1, 2), function(m) {return(data[eval(as.name(filter_col)) == m,.SD[1,],by = filter_col][[name]])})
+      # f_cat_temp = convert_list_matrix_to_character_matrix(f_cat_list[[name]])
+      f_cat_str[] = paste_matrix2(f_cat_str, f_cat_list[[name]])
+    }
+    if (mix_order) {
+      f_cat_list[[name]] = apply(f_str_m, c(1, 2), function(m) {return(data2[eval(as.name(filter_col2)) == m,.SD[1,],by = filter_col2][[name]])})
+      # f_cat_temp = convert_list_matrix_to_character_matrix(f_cat_list[[name]])
+      f_cat_str[] = paste_matrix2(f_cat_str, f_cat_list[[name]])
+    }
+  }
+  f_cat_m = f_cat_list[[1]]
+  f_cat_m[] = f_cat_str
+  f_cat_length_m = apply(f_cat_m,c(1,2),function(m){str_length(str_trim(m[[1]]))})
+  f_cat_m[is.na(f_cat_length_m>0)] = ""
+  f_cat_m = as.data.frame(f_cat_m)
+  f_cat_m[] = sapply(f_cat_m,unlist)
+  f_cat_m$rownum = -(1:nrow(f_cat_m))
+  f_cat_m_melt = melt(f_cat_m,id.vars = "rownum")
+  p <- ggplot(f_value_m_melt, aes(variable,rownum)) + geom_tile(aes(fill = value),colour = "white") + scale_fill_gradient(low = "white",high = "purple")+geom_text(aes(label=f_cat_m_melt$value),angle = 45)
   p
 }
 
@@ -522,3 +557,13 @@ function(){
   plot_multiple_factor(data = sale_perarea_by_brand[CATEGORY_2_EDIT %in% cat_list,],"CATEGORY_2_EDIT","SERIES_NAME","saleperarea")
 }
 
+#based on all contract code corresponding to 1 booth code
+replace_matrix_with_dict = function(raw_matrix,dict,con_column = "CONTRACT_CODE",target_column = "BOOTH_CODE"){
+  library(plyr)
+  vector = as.vector(raw_matrix)
+  df = data.frame(CONTRACT_CODE = vector)
+  transformed_matrix = join(df,dict,by = con_column,type = "left")
+  result_matrix = raw_matrix
+  result_matrix[] = transformed_matrix[[target_column]]
+  return(result_matrix)
+}

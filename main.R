@@ -73,7 +73,7 @@ sale_perarea_by_brand[,brand_index := saleperarea/saleperarea_median]
 #plot CATEGORY on the same panel
 cat_list = enc2utf8(c("实木","卫浴","瓷砖"))
 cat_list = unique(sale_perarea_by_brand$CATEGORY_2_EDIT)[1:3]
-plot_multiple_factor(data = sale_perarea_by_brand[CATEGORY_2_EDIT %in% cat_list,],"CATEGORY_2_EDIT","SERIES_NAME","saleperarea")
+plot_multiple_factor(data = sale_perarea_by_brand[CATEGORY_2_EDIT %in% cat_list,],"CATEGORY_2_EDIT","SERIES_NAME","saleperarea",catname = paste0(cat_list,collapse = "-"))
 
 #品类年份，季节，工作日/周末单位面积销量分布
 #品类单位面积销量（当下限定在某个月）工作日/周末,本函数特别针对七月

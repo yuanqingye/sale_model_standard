@@ -883,3 +883,45 @@ source('~/Rfile/R_hana.R', encoding = 'UTF-8')
 source('~/Rfile/R_impala.R',encoding = 'UTF-8')
 people_move_data_sql = "select * from ods.ods_wisdowmall_store_track_dt"
 people_move_data = read_data_impala_general(people_move_data_sql)
+
+
+temp_sql = paste0("select * from BIGBI.dim_brand_enter_info where mall_name like '%",mall_name,"%'")
+temp = read_data_from_hana(temp_sql)
+shop_booth_dict_raw_sql = paste0("select * from BIGBI.dim_shop_info where mall_name like '%上海金桥商场%'")
+shop_booth_dict_raw = read_data_from_hana(shop_booth_dict_raw_sql)
+shop_booth_dict_raw = data.table(shop_booth_dict_raw)
+shop_booth_dict = shop_booth_dict_raw[!duplicated(shop_booth_dict_raw[,c("BOOTH_CODE","SHOP_ID","SHOP_NAME")]),]
+shop_booth_dict = shop_booth_dict[!duplicated(shop_booth_dict,by = c("BOOTH_CODE","SHOP_ID")),c("BOOTH_CODE","SHOP_ID","SHOP_NAME")]
+shop_booth_dict = shop_booth_dict[!is.na(BOOTH_CODE),]
+
+#1-1 for booth_code and contract_code
+source('~/Rfile/R_hana.R', encoding = 'UTF-8')
+contract_data_sql = "select * from BIGBI.dim_contract_detail where mall_name like '%上海金桥商场%'"
+contract_raw2 = read_data_from_hana(contract_data_sql)
+contract2 = contract_raw2[,c("BOOTH_CODE","CONTRACT_CODE")]
+#1-N for booth_code and shop_id
+shop_booth_dict
+
+
+month_uv = smart_mall_track_data[["January"]][event_type==0,.(month_uv=uniqueN(pid)),by = c("store_id")]
+month_daily_uv = smart_mall_track_data[["January"]][event_type==0 & duration>2,.(daily_uv = uniqueN(pid)),by = c("store_id","date")][,.(month_daily_uv = sum(daily_uv)),by = "store_id"]
+month_daily_uv_with_booth_code = merge(month_daily_uv,shop_booth_dict,by.x = "store_id",by.y = "SHOP_ID",all.x = TRUE)
+month_daily_uv_with_contract_code = merge(month_daily_uv_with_booth_code,contract2,by = "BOOTH_CODE",all.x = TRUE)
+plot_floor_heat_uv(f1_str_m,value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,mix_order = FALSE)
+plot_floor_heat_uv(f2_str_m,value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,mix_order = FALSE)
+plot_floor_heat_uv(f3_str_m,value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,mix_order = FALSE)
+plot_floor_heat_uv(f4_str_m,value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,mix_order = FALSE)
+plot_floor_heat_uv(f5_str_m,value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,mix_order = FALSE)
+plot_floor_heat_uv(f6_str_m,value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,mix_order = FALSE)
+plot_floor_heat_uv(f7_str_m,value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,mix_order = FALSE)
+
+plot_floor_heat_uv(f1_str_m,label_name = "saleperareaperduration",value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,data2 = sale_data_stall_sum_list[["shanghaijinqiao"]])
+plot_floor_heat_uv(f2_str_m,label_name = "saleperareaperduration",value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,data2 = sale_data_stall_sum_list[["shanghaijinqiao"]])
+plot_floor_heat_uv(f3_str_m,label_name = "saleperareaperduration",value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,data2 = sale_data_stall_sum_list[["shanghaijinqiao"]])
+plot_floor_heat_uv(f4_str_m,label_name = "saleperareaperduration",value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,data2 = sale_data_stall_sum_list[["shanghaijinqiao"]])
+
+library(lubridate)
+temp1 = ymd_hms(smart_mall_track_data[["January"]]$exit_time)
+temp0 = ymd_hms(smart_mall_track_data[["January"]]$enter_time)
+temp = difftime(temp1,temp0,units = "min")
+smart_mall_track_data[["January"]]$duration = temp
