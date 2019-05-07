@@ -567,3 +567,7 @@ replace_matrix_with_dict = function(raw_matrix,dict,con_column = "CONTRACT_CODE"
   result_matrix[] = transformed_matrix[[target_column]]
   return(result_matrix)
 }
+
+# check_whether_DT_updated = function(DT){
+#   DT[,new_col := 1]
+# }
