@@ -920,8 +920,103 @@ plot_floor_heat_uv(f2_str_m,label_name = "saleperareaperduration",value_name = "
 plot_floor_heat_uv(f3_str_m,label_name = "saleperareaperduration",value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,data2 = sale_data_stall_sum_list[["shanghaijinqiao"]])
 plot_floor_heat_uv(f4_str_m,label_name = "saleperareaperduration",value_name = "month_daily_uv",filter_col = "CONTRACT_CODE",data = month_daily_uv_with_contract_code,data2 = sale_data_stall_sum_list[["shanghaijinqiao"]])
 
+
+source('~/Rfile/R_hana.R', encoding = 'UTF-8')
+source("~/Rfile/R_hive.R")
+source("~/Rfile/R_impala.R")
+source('~/R_Projects/sale_model_standard/Rfile/function.R', encoding = 'UTF-8')
+Month = "April"
+mall_name =  "上海金桥商场"
+threshold = 5
+smart_mall_track_data = list()
+smart_mall_stay_data = list()
+smart_mall_stay_data_without_staff = list()
+smart_mall_stay_data_customer = list()
+
+smart_mall_track_data[[Month]] = get_tracking_data(Month)
 library(lubridate)
-temp1 = ymd_hms(smart_mall_track_data[["January"]]$exit_time)
-temp0 = ymd_hms(smart_mall_track_data[["January"]]$enter_time)
+temp1 = ymd_hms(smart_mall_track_data[[Month]]$exit_time)
+temp0 = ymd_hms(smart_mall_track_data[[Month]]$enter_time)
 temp = difftime(temp1,temp0,units = "min")
-smart_mall_track_data[["January"]]$duration = temp
+smart_mall_track_data[[Month]]$duration = temp
+smart_mall_track_data[[Month]]$enter_date = str_sub(smart_mall_track_data[[Month]]$enter_time,1,10) #30 secs
+smart_mall_track_data[[Month]]$store_id = as.character(smart_mall_track_data[[Month]]$store_id) #10 
+smart_mall_track_data[[Month]]$enter_time_xct = temp0
+smart_mall_track_data[[Month]]$exit_time_xct = temp1
+
+is_staff_data_sql = "select distinct rs_profile_id from ods.ods_db_aimallbasic_customer_info_dt where is_valid = 1 and is_staff = 1"
+is_staff_data = read_data_impala_general(is_staff_data_sql)
+is_staff_data$is_staff = 1
+is_staff_data = data.table(is_staff_data)
+
+smart_mall_stay_data[[Month]] = smart_mall_track_data[[Month]][event_type==0,]
+smart_mall_stay_data_without_staff[[Month]] = merge(smart_mall_stay_data[[Month]],is_staff_data,all.x = TRUE,by.x = "profile_id",by.y = "rs_profile_id")
+smart_mall_stay_data_without_staff[[Month]] = smart_mall_stay_data_without_staff[[Month]][is.na(is_staff),]
+# setkey(smart_mall_stay_data_without_staff[[Month]],store_id,enter_date)
+# View(smart_mall_stay_data_without_staff[[Month]][.("37645","2019-04-08")])
+# month_uv = smart_mall_stay_data_without_staff[[Month]][duration >= threshold,.(month_uv=uniqueN(pid)),by = c("store_id")]
+smart_mall_stay_data_customer[[Month]] = smart_mall_stay_data_without_staff[[Month]][duration >= threshold,]
+
+sale_traffic_merge = list()
+sale_traffic_merge_groupby_order = list()
+sale_traffic_merge_with_time_filter = list()
+
+sale_unwanted_columns = c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","cont_cat3_name","month_id")
+traffic_unwanted_columns = c("id","create_time","update_time","mall_id","event_type","dt","is_staff")
+sale_data_list[["shanghaijinqiao"]] = get_sale_data_by_mall_name("上海金桥商场")
+sale_data_list_jinqiao_april = sale_data_list[["shanghaijinqiao"]][date_id <= "2019-04-30" & date_id >= "2019-04-01",]
+sale_traffic_merge[[Month]] = merge(sale_data_list_jinqiao_april[,-c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","month_id")],smart_mall_stay_data_without_staff[[Month]][,-c("id","create_time","update_time","mall_id","event_type","dt","is_staff")],by.x = c("shop_id","date_id"),by.y = c("store_id","enter_date"))
+sale_traffic_merge[[Month]]$ordr_date_xct = ymd_hms(sale_traffic_merge[[Month]]$ordr_date)
+#after merge 500+ orders disappeared!!
+# 1在客流中无法找到该store_id,很可能是数据录入的问题
+# 2在客流中可以找到,但是无法匹配,问题可能多种多样(阈值设置过长,之前仔细看过,event_type赋值不对)
+sale_traffic_merge_with_time_filter[[Month]] = sale_traffic_merge[[Month]][ordr_date > enter_time & ordr_date < exit_time,] #1.3613,2.3996
+setkey(smart_mall_track_data[[Month]],store_id,event_type)
+setkeyv(smart_mall_track_data[[Month]],c("store_id","event_type"))
+View(smart_mall_track_data[[Month]][.("37622",0)])
+#get unmatched rows:
+library(dplyr)
+#as long as either date or shop is is not matched, that record will be pulled out
+#1.some date/time matched, some time unmatched versus always matched
+#2.unmatched for any date versus always matched
+
+#using 3 as matched 
+sale_data_not_matched_by_traffic = anti_join(sale_data_list_jinqiao_april[,-c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","cont_cat3_name","month_id")], smart_mall_stay_data_customer[[Month]][,-c("id","create_time","update_time","mall_id","event_type","dt","is_staff")],by = c("shop_id" = "store_id","date_id" = "enter_date"))
+sale_data_not_matched_by_traffic2 = anti_join(sale_data_list_jinqiao_april[,-c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","cont_cat3_name","month_id")], smart_mall_track_data[[Month]][,-c("id","create_time","update_time","mall_id","event_type","dt")],by = c("shop_id" = "store_id","date_id" = "enter_date"))
+sale_data_not_matched_by_traffic3 = anti_join(sale_data_list_jinqiao_april[,-c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","cont_cat3_name","month_id")], smart_mall_stay_data_without_staff[[Month]][,-c("id","create_time","update_time","mall_id","event_type","dt")],by = c("shop_id" = "store_id","date_id" = "enter_date"))
+sale_store_not_matched_by_traffic_store = anti_join(sale_data_list_jinqiao_april[,-c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","cont_cat3_name","month_id")], smart_mall_track_data[[Month]][,-c("id","create_time","update_time","mall_id","event_type","dt")],by = c("shop_id" = "store_id"))
+unmatch_but_existed_shop_id = setdiff(sale_data_not_matched_by_traffic$shop_id, sale_data_not_matched_by_traffic2$shop_id)
+existing_traffic_store_id = unique(smart_mall_track_data[[Month]]$store_id)
+existing_sale_store_id= unique(sale_data_list_jinqiao_april$shop_id)
+sale_data_not_matched_by_traffic = data.table(sale_data_not_matched_by_traffic)
+sale_data_not_matched_by_traffic[!shop_id %in% existing_traffic_store_id,] #压根不存在于目前的客流表中
+sale_data_not_matched_by_traffic[shop_id %in% existing_traffic_store_id,] #存在于客流表但在某天无法对应
+
+#35261/63254; half of the visits is due to have a deal
+#53687/90122; sale_traffic_merge[[Month]]/smart_mall_stay_data_customer[[Month]]
+sale_traffic_merge[[Month]][ordr_date > enter_time & ordr_date < exit_time,person_related := 1]
+sale_traffic_merge[[Month]][is.na(person_related),person_related := 0]
+
+sale_traffic_merge_groupby_shop_and_date = list()
+sale_traffic_merge_groupby_shop_and_date[[Month]] = sale_traffic_merge[[Month]][,.(order_num_perday = uniqueN(ordr_id)),by = c("date_id","shop_id")]
+sale_traffic_merge[[Month]] = inner_join(sale_traffic_merge[[Month]],sale_traffic_merge_groupby_shop_and_date[[Month]],by = c("shop_id" = "shop_id","date_id" = "date_id"))
+setDT(sale_traffic_merge[[Month]])
+sale_traffic_merge_groupby_shop_and_date_and_person = list() 
+sale_traffic_merge_groupby_shop_and_date_and_person[[Month]] = sale_traffic_merge[[Month]][,.(related_sum = sum(person_related)),by = .(date_id,profile_id,shop_id)]
+sale_traffic_merge[[Month]] = inner_join(sale_traffic_merge[[Month]],sale_traffic_merge_groupby_shop_and_date_and_person[[Month]],by = c("shop_id" = "shop_id","date_id" = "date_id","profile_id" = "profile_id"))
+setDT(sale_traffic_merge[[Month]])
+source('~/R_Projects/sale_model_standard/R_scripts_functions/supportingfunctions.R', encoding = 'UTF-8')
+#put the original value here will make the table same rows as before.
+sale_traffic_merge_groupby_order[[Month]] = sale_traffic_merge[[Month]][,.(visit_times = .N,related_visit_times = sum(person_related),max_duration = max(duration),mean_duration = mean(duration)),by = .(ordr_id,order_num_perday)]
+#sum with some condition:
+sale_traffic_merge_groupby_order[[Month]] = sale_traffic_merge[[Month]][,.(visit_times = .N,related_visit_times = sum(person_related),max_duration = max(duration),mean_duration = mean(duration),related_mean_duration = mean(.SD[person_related == 1,][["duration"]]),related_max_duration = max(.SD[person_related == 1,][["duration"]])),by = .(ordr_id,order_num_perday)]
+sale_traffic_merge_groupby_order[[Month]] = sale_traffic_merge[[Month]][,.(visit_times = .N,related_visit_times = sum(person_related),max_duration = max(duration),mean_duration = mean(duration),related_mean_duration = mean(.SD[person_related == 1,][["duration"]]),related_max_duration = max(.SD[person_related == 1,][["duration"]]),time_distance = distance_between_point_to_interval_sets(.SD$ordr_date_xct,.SD$enter_time_xct,.SD$exit_time_xct,.SD$duration,5),related_person_duration_sum = get_related_person_duration_sum(.SD[["related_sum"]],.SD[["duration"]])),by = .(ordr_id,order_num_perday,prod_name,cont_cat3_name,act_amt)]
+# temp = sale_traffic_merge[[Month]][,.(distance = distance_between_point_to_interval_sets(.SD$ordr_date_xct,.SD$enter_time_xct,.SD$exit_time_xct,.SD$duration,5)),by = .(ordr_id,order_num_perday)]
+# temp = sale_traffic_merge[[Month]][,.(distance = distance_between_point_to_interval_sets(.SD[["ordr_date_xct"]],.SD[["enter_time_xct"]],.SD[["exit_time_xct"]],.SD[["duration"]],5)),by = .(ordr_id,order_num_perday)]
+library(ggplot2)
+related_visit_times_plot <- ggplot(sale_traffic_merge_groupby_order[[Month]], aes(x=cont_cat3_name, y=related_visit_times)) + geom_boxplot() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+related_visit_times_plot
+
+visit_times_plot <- ggplot(sale_traffic_merge_groupby_order[[Month]], aes(x=cont_cat3_name, y=related_mean_duration)) + geom_boxplot() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+visit_times_plot
+#note:there is some problem with profile id and order related, a person can be invovled to more than one order

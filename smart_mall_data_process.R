@@ -1,4 +1,5 @@
 # smart_mall_track_data_list = list()
+library(lubridate)
 source("~/Rfile/R_hive.R") ##!!need to include that file
 source('~/Rfile/R_impala.R',encoding = 'UTF-8')
 source('~/R_Projects/sale_model_standard/R_scripts_functions/supportingfunctions.R', encoding = 'UTF-8')
@@ -6,7 +7,7 @@ needed_col = c("uv_over_sale_count","pv_over_sale_count","uv_over_sale_sum","pv_
 
 smart_mall_track_data_sql = "select * from ods.ods_wisdowmall_store_track_dt where dt = '20190219' limit 60000"
 smart_mall_track_data_list[["20190219"]] = read_data_impala_general(smart_mall_track_data_sql)
-
+smart_mall_apr_list = list()
 file.create("./smart_mall_track_data_list_second.RData")
 for(dt in as.character(20190126:20190131))
 {
@@ -15,12 +16,12 @@ for(dt in as.character(20190126:20190131))
   save(smart_mall_track_data_list,file = "./smart_mall_track_data_list_second.RData")
   jgc()
 }
-
-for(dt in as.character(20190301:20190331))
+file.create("./smart_mall_apr_list.RData")
+for(dt in as.character(ymd(20190401:20190430)))
 {
-  smart_mall_track_data_sql = paste0("select * from ods.ods_wisdowmall_store_track_dt where dt = '",dt,"'")
-  smart_mall_list[[dt]] = read_data_impala_general(smart_mall_track_data_sql)
-  save(smart_mall_list,file = "./smart_mall_list.RData")
+  smart_mall_track_data_sql = paste0("select * from ods.ods_db_aimalldigital_store_traffic_dt where enter_time like '",dt,"%'")
+  smart_mall_apr_list[[dt]] = read_data_impala_general(smart_mall_track_data_sql)
+  save(smart_mall_apr_list,file = "~/R_Projects/Correlation/smart_mall_apr_list.RData")
   jgc()
 }
 

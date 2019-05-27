@@ -6,14 +6,15 @@ library(plyr)
 library(scales)
 library(stringr)
 library(easyGgplot2)
+source("~/Rfile/R_hive.R")
 #contract related table
 #ods.ods_hana_bigbi_dim_contract_booth_detail_dt
 #hana BIGBI.dim_contract_detail
 
-#function to get sale data by mall name
+#function to get sale data by mall name, could put open_id,custom_id in future
 get_sale_data_by_mall_name = function(mall_name){
   #old logic ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0)) is not used anymore
-  sql = paste0("select date_id,ordr_date,prod_name,mall_name,shop_id,shop_name,contract_code,house_no,booth_id,booth_desc,cnt_cat1_num,cnt_cat2_num,cnt_cat3_num,is_coupon,partner_name,cont_cat1_name,cont_cat2_name,cont_cat3_name,act_amt from dl.fct_ordr where mall_name like '%",mall_name,"%' and 
+  sql = paste0("select ordr_id,date_id,ordr_date,prod_name,mall_name,shop_id,shop_name,contract_code,house_no,booth_id,booth_desc,cnt_cat1_num,cnt_cat2_num,cnt_cat3_num,is_coupon,partner_name,cont_cat1_name,cont_cat2_name,cont_cat3_name,act_amt from dl.fct_ordr where mall_name like '%",mall_name,"%' and 
   act_amt > 0 and ordr_status not in ('1','7','19','Z','X')")
   result = read_data_hive_general(sql)
   result$month_id = str_sub(result$ordr_date,1,7)
@@ -290,6 +291,7 @@ plot_floor_heat = function(f_str_m,label_name = "series_name",value_name = "sale
 }
 
 plot_floor_heat_uv = function(f_str_m,label_name = "SHOP_NAME",value_name = "saleperareainterval",filter_col = "BOOTH_CODE",filter_col2 = "BOOTH_CODE",data = month_daily_uv_with_contract_code,data2 = sale_data_stall_sum_list[["shanghaijinqiao"]],mix_order = TRUE){
+  #pick first row as value is not always correct
   f_value_m = apply(f_str_m,c(1,2),function(m){return(data[eval(as.name(filter_col)) == m,.SD[1,],by = filter_col][[value_name]])})
   f_value_m[is.na(!(f_value_m > 0))] = 0
   f_value_m = as.data.frame(f_value_m)
@@ -571,3 +573,23 @@ replace_matrix_with_dict = function(raw_matrix,dict,con_column = "CONTRACT_CODE"
 # check_whether_DT_updated = function(DT){
 #   DT[,new_col := 1]
 # }
+
+get_tracking_data = function(mon = "initial"){
+  if(mon == "initial"){
+    load("~/R_Projects/sale_model_standard/smart_mall_track_data_list_second.RData")
+    load("~/R_Projects/sale_model_standard/smart_mall_list.RData")
+    smart_mall_track_data_jan = rbindlist(smart_mall_track_data_list)
+    smart_mall_track_data_feb = rbindlist(smart_mall_list)
+    smart_mall_track_data = rbind(smart_mall_track_data_jan,smart_mall_track_data_feb)
+  }
+  else if (mon == "March"){
+    load("~/R_Projects/Correlation/smart_mall_track_data_march.RData")
+    smart_mall_track_data = rbindlist(smart_mall_track_data_list)
+  }
+  else{
+    load(paste0("~/R_Projects/Correlation/smart_mall_",mon,"_list.RData"))
+    smart_mall_track_data = rbindlist(eval(as.name(paste0("smart_mall_",mon,"_list"))))
+  }
+  #need to be filled
+  return(smart_mall_track_data)
+}
