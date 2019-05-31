@@ -925,7 +925,8 @@ source('~/Rfile/R_hana.R', encoding = 'UTF-8')
 source("~/Rfile/R_hive.R")
 source("~/Rfile/R_impala.R")
 source('~/R_Projects/sale_model_standard/Rfile/function.R', encoding = 'UTF-8')
-Month = "April"
+# Month = "initial"
+Month = "Febrary"
 mall_name =  "上海金桥商场"
 threshold = 5
 smart_mall_track_data = list()
@@ -934,6 +935,11 @@ smart_mall_stay_data_without_staff = list()
 smart_mall_stay_data_customer = list()
 
 smart_mall_track_data[[Month]] = get_tracking_data(Month)
+# compare the data with originally collected data
+setkey(smart_mall_track_data[[Month]],enter_time,exit_time)
+nrow(unique(smart_mall_track_data[[Month]],by = c("enter_time","exit_time")))
+1642729
+
 library(lubridate)
 temp1 = ymd_hms(smart_mall_track_data[[Month]]$exit_time)
 temp0 = ymd_hms(smart_mall_track_data[[Month]]$enter_time)
@@ -960,11 +966,16 @@ smart_mall_stay_data_customer[[Month]] = smart_mall_stay_data_without_staff[[Mon
 sale_traffic_merge = list()
 sale_traffic_merge_groupby_order = list()
 sale_traffic_merge_with_time_filter = list()
+sale_data_list_jinqiao = list()
 
 sale_unwanted_columns = c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","cont_cat3_name","month_id")
 traffic_unwanted_columns = c("id","create_time","update_time","mall_id","event_type","dt","is_staff")
 sale_data_list[["shanghaijinqiao"]] = get_sale_data_by_mall_name("上海金桥商场")
-sale_data_list_jinqiao_april = sale_data_list[["shanghaijinqiao"]][date_id <= "2019-04-30" & date_id >= "2019-04-01",]
+sale_data_list_jinqiao[["january"]] = sale_data_list[["shanghaijinqiao"]][date_id <= "2019-01-31" & date_id >= "2019-01-01",]
+sale_data_list_jinqiao[["febrary"]] = sale_data_list[["shanghaijinqiao"]][date_id <= "2019-02-28" & date_id >= "2019-02-01",]
+sale_data_list_jinqiao[["march"]] = sale_data_list[["shanghaijinqiao"]][date_id <= "2019-03-31" & date_id >= "2019-03-01",]
+sale_data_list_jinqiao[["april"]] = sale_data_list[["shanghaijinqiao"]][date_id <= "2019-04-30" & date_id >= "2019-04-01",]
+sale_data_list_jinqiao[["may"]] = sale_data_list[["shanghaijinqiao"]][date_id <= "2019-05-31" & date_id >= "2019-05-01",]
 sale_traffic_merge[[Month]] = merge(sale_data_list_jinqiao_april[,-c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","month_id")],smart_mall_stay_data_without_staff[[Month]][,-c("id","create_time","update_time","mall_id","event_type","dt","is_staff")],by.x = c("shop_id","date_id"),by.y = c("store_id","enter_date"))
 sale_traffic_merge[[Month]]$ordr_date_xct = ymd_hms(sale_traffic_merge[[Month]]$ordr_date)
 #after merge 500+ orders disappeared!!

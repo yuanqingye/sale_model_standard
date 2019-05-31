@@ -574,22 +574,9 @@ replace_matrix_with_dict = function(raw_matrix,dict,con_column = "CONTRACT_CODE"
 #   DT[,new_col := 1]
 # }
 
-get_tracking_data = function(mon = "initial"){
-  if(mon == "initial"){
-    load("~/R_Projects/sale_model_standard/smart_mall_track_data_list_second.RData")
-    load("~/R_Projects/sale_model_standard/smart_mall_list.RData")
-    smart_mall_track_data_jan = rbindlist(smart_mall_track_data_list)
-    smart_mall_track_data_feb = rbindlist(smart_mall_list)
-    smart_mall_track_data = rbind(smart_mall_track_data_jan,smart_mall_track_data_feb)
-  }
-  else if (mon == "March"){
-    load("~/R_Projects/Correlation/smart_mall_track_data_march.RData")
-    smart_mall_track_data = rbindlist(smart_mall_track_data_list)
-  }
-  else{
-    load(paste0("~/R_Projects/Correlation/smart_mall_",mon,"_list.RData"))
-    smart_mall_track_data = rbindlist(eval(as.name(paste0("smart_mall_",mon,"_list"))))
-  }
+get_tracking_data = function(mon){
+  load(paste0("~/R_Projects/sale_model_standard/smart_mall_",mon,"_list.RData"))
+  smart_mall_track_data = rbindlist(eval(as.name(paste0("smart_mall_",mon,"_list"))))
   #need to be filled
   return(smart_mall_track_data)
 }
