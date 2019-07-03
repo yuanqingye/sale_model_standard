@@ -963,10 +963,10 @@ smart_mall_stay_data_without_staff[[Month]] = smart_mall_stay_data_without_staff
 # month_uv = smart_mall_stay_data_without_staff[[Month]][duration >= threshold,.(month_uv=uniqueN(pid)),by = c("store_id")]
 smart_mall_stay_data_customer[[Month]] = smart_mall_stay_data_without_staff[[Month]][duration >= threshold,]
 
+sale_data_list_jinqiao = list()
 sale_traffic_merge = list()
 sale_traffic_merge_groupby_order = list()
 sale_traffic_merge_with_time_filter = list()
-sale_data_list_jinqiao = list()
 
 sale_unwanted_columns = c("mall_name","house_no","booth_id","booth_desc","cnt_cat1_num","cnt_cat2_num","cnt_cat3_num","is_coupon","partner_name","cont_cat1_name","cont_cat2_name","cont_cat3_name","month_id")
 traffic_unwanted_columns = c("id","create_time","update_time","mall_id","event_type","dt","is_staff")
@@ -981,7 +981,7 @@ sale_traffic_merge[[Month]]$ordr_date_xct = ymd_hms(sale_traffic_merge[[Month]]$
 #after merge 500+ orders disappeared!!
 # 1在客流中无法找到该store_id,很可能是数据录入的问题
 # 2在客流中可以找到,但是无法匹配,问题可能多种多样(阈值设置过长,之前仔细看过,event_type赋值不对)
-sale_traffic_merge_with_time_filter[[Month]] = sale_traffic_merge[[Month]][ordr_date > enter_time & ordr_date < exit_time,] #1.3613,2.3996
+sale_traffic_merge_with_time_filter[[Month]] = sale_traffic_merge[[Month]][ordr_date >= enter_time & ordr_date <= exit_time,] #1.3613,2.3996
 setkey(smart_mall_track_data[[Month]],store_id,event_type)
 setkeyv(smart_mall_track_data[[Month]],c("store_id","event_type"))
 View(smart_mall_track_data[[Month]][.("37622",0)])

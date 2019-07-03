@@ -14,7 +14,7 @@ source("~/Rfile/R_hive.R")
 #function to get sale data by mall name, could put open_id,custom_id in future
 get_sale_data_by_mall_name = function(mall_name){
   #old logic ((type = 'OMS' and ordr_status ='Y') or (type != 'OMS' and trade_amt > 0)) is not used anymore
-  sql = paste0("select ordr_id,date_id,ordr_date,prod_name,mall_name,shop_id,shop_name,contract_code,house_no,booth_id,booth_desc,cnt_cat1_num,cnt_cat2_num,cnt_cat3_num,is_coupon,partner_name,cont_cat1_name,cont_cat2_name,cont_cat3_name,act_amt from dl.fct_ordr where mall_name like '%",mall_name,"%' and 
+  sql = paste0("select ordr_id,date_id,ordr_date,prod_name,mall_name,shop_id,shop_name,contract_code,house_no,booth_id,booth_desc,cnt_cat1_num,cnt_cat2_num,cnt_cat3_num,is_coupon,partner_name,cont_cat1_name,cont_cat2_name,cont_cat3_name,cont_main_brand_name,act_amt from dl.fct_ordr where mall_name like '%",mall_name,"%' and 
   act_amt > 0 and ordr_status not in ('1','7','19','Z','X')")
   result = read_data_hive_general(sql)
   result$month_id = str_sub(result$ordr_date,1,7)
